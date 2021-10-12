@@ -1,0 +1,10 @@
+.pio/*
+!.pio/build
+.pio/build/*
+!.pio/build/due
+.pio/build/due/*
+!.pio/build/due/firmware.bin
+.piolibdeps
+.vscode
+.travis.yml
+README
