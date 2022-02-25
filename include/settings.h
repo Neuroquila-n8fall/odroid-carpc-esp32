@@ -66,6 +66,8 @@ extern const unsigned long SHUTDOWN_WAIT_DELAY; //Wartezeit für Herunterfahren
 extern unsigned long startPowerTransitionMillis;    //Counter für den Aufweck- und Herunterfahrprozess
 extern const unsigned long ODROID_STANDBY_DELAY; //Wartzeit für Sleepfunktion
 
+extern bool hibernateActive;
+
 //Geschwindigkeit der Seriellen Schnittstelle "Serial"
 extern const int serialBaud;
 

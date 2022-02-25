@@ -52,6 +52,8 @@ const unsigned long SHUTDOWN_WAIT_DELAY = 60000; //Wartezeit für Herunterfahren
 unsigned long startPowerTransitionMillis = 0;    //Counter für den Aufweck- und Herunterfahrprozess
 const unsigned long ODROID_STANDBY_DELAY = 5000; //Wartzeit für Sleepfunktion
 
+bool hibernateActive = false;
+
 //Geschwindigkeit der Seriellen Schnittstelle "Serial"
 const int serialBaud = 115200;
 

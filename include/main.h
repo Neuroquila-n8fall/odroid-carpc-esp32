@@ -20,7 +20,6 @@ extern void buildtimeStamp();
 //Mausrad simulieren, je nachdem in welche Richtung der iDrive Knopf gedreht wurde.
 extern void scrollScreen();
 //Uhrzeit pflegen. Ist ausschließlich dazu da die Uhrzeit voran schreiten zu lassen, wenn der Canbus inaktiv ist und keine Zeit vom Auto kommt.
-//Die RTC Library kommt leider nicht in Frage da mein DUE board wohl keinen Kristall für RTC hat und daher der MCU einfriert beim initialisieren.
 extern void timeKeeper();
 //Taste drücken und sofort wieder freigeben
 extern void sendKey(uint8_t keycode);

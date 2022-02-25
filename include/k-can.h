@@ -53,7 +53,7 @@ unsigned long previousCanMsgTimestamp = 0;
 //Zeitstempel für letzte Canbus Nachricht
 unsigned long previousCasMessageTimestamp = 0;
 //FALSE, wenn der Canbus seit mehr als 30 sekunden keine Nachricht transportiert hat.
-bool canbusEnabled = false;
+bool canbusEnabled = true;
 
 /*
   iDrive Implementation

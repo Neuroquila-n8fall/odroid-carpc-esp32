@@ -13,12 +13,11 @@
 #include <ble_keyboard.h>
 
 Adafruit_INA219 ina219;
-
+ACAN2515 can(MCP2515_CS, SPI, MCP2515_INT);
 void setup()
 {
   delay(1000);
   Serial.begin(serialBaud);
-  setCpuFrequencyMhz(80);
   //Zeitstempel einrichten
   buildtimeStamp();
 
@@ -32,8 +31,13 @@ void setup()
   analogWriteResolution(PIN_VU7A_BRIGHTNESS, 12);   //DUE arbeitet mit 12 bits. Das hat immer sehr gut funktioniert.
   analogWriteFrequency(PIN_VU7A_BRIGHTNESS, 980);   //4103 LED Driver arbeitet mit bis zu 1kHz. Wir nehmen hier das was der DUE bereits geleistet hat.
 
+  hibernateActive = false;
+
   //Setup CAN Module. Es ist nicht notwendig auf den Bus zu warten
-  setupCan();
+  if(setupCan())
+  {
+    // Todo?
+  };
 
   //Display von ganz dunkel nach ganz Hell stellen. Quasi als Test
   for (int i = 0; i <= 255; i++)
@@ -50,19 +54,24 @@ void setup()
 
   if (!ina219.begin())
   {
-    Serial.println("Failed to find INA219 chip");
+    Serial.println("[Setup] Failed to find INA219 chip");
+  }
+  else
+  {
+    Serial.println("[Setup] INA219 Initialized.");
   }
 
-  Serial.println("[setup] Ready.");
+  // Prime voltage reading average array.
+  for (int i = 0; i < maxAverageReadings; i++)
+  {
+    voltageReadings[i] = 12.5F;
+  }
+
+  Serial.println("[Setup] Ready.");
 }
 
 void loop()
 {
-
-  if (odroidRunning)
-  {
-    bleKeyboard.run();
-  }
 
   //Aktuelle Zeit
   currentMillis = millis();
@@ -141,12 +150,8 @@ void loop()
       ledState = LOW;
     }
 
-    // INA Voltage Measurement
-    float busvoltage = ina219.getBusVoltage_V();
-
-    if (busvoltage < 12.00F && odroidRunning == LOW)
-    {
-    }
+    //Spannung prüfen
+    checkVoltage();
 
     digitalWrite(LED_BUILTIN, ledState);
     previousOneSecondTick = currentMillis;
@@ -156,10 +161,10 @@ void loop()
     buildtimeStamp();
   }
 
-  bool anyPendingActions = odroidStartRequested || odroidShutdownRequested || odroidPauseRequested;
+  
 
   //Allgemeine Funktionen. Nur ausführen, wenn Zyklus erreicht wurde und keine ausstehenden Aktionen laufen, die ein zeitkritisches Verändern der Ausgänge beinhalten.
-  if (currentMillis - previousMainTaskTime >= CYCLE_DELAY && !anyPendingActions)
+  if (currentMillis - previousMainTaskTime >= CYCLE_DELAY && !anyPendingActions())
   {
     //Zündung überprüfen
     checkIgnitionState();
@@ -217,13 +222,20 @@ void loop()
 
 void processCanMessages()
 {
-  unsigned long currentMillis = millis();
+  //can.poll();
   CANMessage frame;
   if (can.available())
   {
     can.receive(frame);
     previousCanMsgTimestamp = currentMillis;
     canbusEnabled = true;
+
+    // Normalbetrieb
+    if (hibernateActive)
+    {
+      exitPowerSaving();
+    }
+    
 
     uint32_t canId = frame.id;
 
@@ -410,28 +422,33 @@ void processCanMessages()
     //Zeitstempel
     Serial.print(timeStamp + '\t');
     Serial.println("[checkCan] Keine Nachrichten seit 30 Sekunden. Der Bus wird nun als deaktiviert betrachtet.");
+    enterPowerSaving();
   }
 }
 
 void enterPowerSaving()
 {
+  Serial.println("[Power] Entering power saving...");
   bleKeyboard.end();
   btStop();
   setCpuFrequencyMhz(10);
-  if (odroidRunning == HIGH)
+  if (odroidRunning == HIGH && !anyPendingActions())
   {
     stopOdroid();
   }
+  hibernateActive = true;  
 }
 
 void exitPowerSaving()
 {
+  Serial.println("[Power] Exiting power saving mode...");
   if (!btStarted())
   {
     btStart();
     bleKeyboard.begin();
   }
   setCpuFrequencyMhz(240);
+  hibernateActive = false;
 }
 
 void checkPins()
@@ -444,6 +461,14 @@ void checkPins()
 
   //Prüfe alle Faktoren für Start, Stopp oder Pause des Odroid.
   checkIgnitionState();
+
+  if(true)
+  {
+    Serial.print("[GPIO] Odroid: ");
+    Serial.println(odroidRunning == 1 ? "Running" : "Stopped");
+    Serial.print("[CAN] Ignition: ");
+    Serial.println(ignitionOn == 0 ? "Running" : "Stopped");
+  }
 }
 
 void checkIgnitionState()
@@ -528,7 +553,7 @@ void stopOdroid()
 
 void buildtimeStamp()
 {
-  sprintf(timeStamp, "[%02d:%02d:%02d %02d.%02d.%u]", hours, minutes, seconds, days, month, year);
+  sprintf(timeStamp, "%02d:%02d:%02d %02d.%02d.%u", hours, minutes, seconds, days, month, year);
   sprintf(timeString, "%02d:%02d:%02d", hours, minutes, seconds);
   sprintf(dateString, "%02d.%02d.%u", days, month, year);
 }
@@ -628,7 +653,7 @@ bool sendMessage(int address, byte len, const uint8_t *buf)
 {
   CANMessage frame;
   frame.id = address;
-  frame.len = 8;
+  frame.len = len;
   //These are here for reference only and are the default values of the ctr
   frame.ext = false;
   frame.rtr = false;
@@ -641,7 +666,7 @@ bool sendMessage(int address, byte len, const uint8_t *buf)
   return can.tryToSend(frame);
 }
 
-void setupCan()
+bool setupCan()
 {
 
   //Setup CAN Module
@@ -678,6 +703,10 @@ void setupCan()
     Serial.print("Configuration error 0x");
     Serial.println(errorCode, HEX);
   }
+
+  previousCanMsgTimestamp = millis();
+
+  return errorCode == 0;
 }
 
 void checkVoltage()
@@ -701,7 +730,15 @@ void checkVoltage()
 
   float averageVoltageReading = totalReadingsValue / maxAverageReadings;
 
-  if (averageVoltageReading < 12.10F && odroidRunning == LOW && !anyPendingActions())
+  if(true)
+  {
+    Serial.print("[Voltage] V: ");
+    Serial.println(busvoltage);
+    Serial.print("[Voltage] Avg: ");
+    Serial.println(averageVoltageReading);
+  }
+
+  if (averageVoltageReading < 12.10F && odroidRunning == HIGH && !anyPendingActions())
   {
     stopOdroid();
   }
@@ -804,7 +841,9 @@ void onCasMessageReceived(CANMessage frame)
   {
     if (!iDriveInitSuccess)
     {
-      sendMessage(IDRIVE_CTRL_INIT_ADDR, 8, IDRIVE_CTRL_INIT);
+      bool sendResult = sendMessage(IDRIVE_CTRL_INIT_ADDR, 8, IDRIVE_CTRL_INIT);
+      Serial.print("CAN Send OK:");
+      Serial.println(sendResult);
     }
   }
 }
@@ -815,7 +854,9 @@ void onIdriveStatusReceived(CANMessage frame)
   {
     Serial.println("Controller ist nicht initialisiert.");
     //Controller meldet er sei nicht initialisiert: Nachricht zum Initialisieren senden.
-    sendMessage(IDRIVE_CTRL_INIT_ADDR, 8, IDRIVE_CTRL_INIT);
+    bool sendResult = sendMessage(IDRIVE_CTRL_INIT_ADDR, 8, IDRIVE_CTRL_INIT);
+    Serial.print("CAN Send OK:");
+    Serial.println(sendResult);
     iDriveInitSuccess = false;
   }
   else
@@ -843,10 +884,14 @@ void onCasCentralLockingReceived(CANMessage frame)
       startOdroid();
 
       //Controller initialisieren.
-      sendMessage(IDRIVE_CTRL_INIT_ADDR, 8, IDRIVE_CTRL_INIT);
+      bool sendResult = sendMessage(IDRIVE_CTRL_INIT_ADDR, 8, IDRIVE_CTRL_INIT);
+      Serial.print("CAN Send OK:");
+      Serial.println(sendResult);
       previousIdriveInitTimestamp = currentMillis;
       //Zur Kontrolle die Instrumentenbeleuchtung einschalten.
-      sendMessage(DASHBOARD_LIGHTING_ADDR, 8, DASHBOARD_LIGHTING_ON);
+      sendResult = sendMessage(DASHBOARD_LIGHTING_ADDR, 2, DASHBOARD_LIGHTING_ON);
+      Serial.print("CAN Send OK:");
+      Serial.println(sendResult);
       //Displayhelligkeit auf Maximum
       analogWrite(PIN_VU7A_BRIGHTNESS, 255);
     }
@@ -1339,4 +1384,9 @@ void onIdriveButtonPressed(CANMessage frame)
           break;
         } //END DIRECTION
       }
+}
+
+bool anyPendingActions()
+{
+  return odroidStartRequested || odroidShutdownRequested || odroidPauseRequested;
 }

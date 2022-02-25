@@ -14,16 +14,16 @@
 //——————————————————————————————————————————————————————————————————————————————
 //  MCP2515 Driver object
 //——————————————————————————————————————————————————————————————————————————————
-ACAN2515 can(MCP2515_CS, SPI, MCP2515_INT);
+
 
 //CAN Nachrichten auf der Konsole ausgeben
-void printCanMsg(int canId, unsigned char *buffer, int len);
+extern void printCanMsg(int canId, unsigned char *buffer, int len);
 //CAN Output als CSV
-void printCanMsgCsv(int canId, unsigned char *buffer, int len);
-bool sendMessage(int address, byte len, const uint8_t *buf);
-void processCanMessages();
+extern void printCanMsgCsv(int canId, unsigned char *buffer, int len);
+extern bool sendMessage(int address, byte len, const uint8_t *buf);
+extern void processCanMessages();
 //CAN Initialisieren
-void setupCan();
+extern bool setupCan();
 
 //Process MFL Button Press
 extern void onMflButtonPressed(CANMessage frame);
