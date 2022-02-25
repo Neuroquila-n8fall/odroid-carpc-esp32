@@ -13,7 +13,7 @@
 #include <ble_keyboard.h>
 
 Adafruit_INA219 ina219;
-ACAN2515 can(MCP2515_CS, SPI, MCP2515_INT);
+ACAN2515 can(MCP2515_CS, SPI, 255);
 void setup()
 {
   delay(1000);
@@ -222,7 +222,7 @@ void loop()
 
 void processCanMessages()
 {
-  //can.poll();
+  can.poll();
   CANMessage frame;
   if (can.available())
   {
@@ -673,8 +673,8 @@ bool setupCan()
   SPI.begin(MCP2515_SCK, MCP2515_MISO, MCP2515_MOSI);
   ACAN2515Settings settings(QUARTZ_FREQUENCY, 100UL * 1000UL); // CAN bit rate 100 kb/s
 
-  const uint16_t errorCode = can.begin(settings, []
-                                       { can.isr(); });
+  //const uint16_t errorCode = can.begin(settings, [] { can.isr(); });
+  const uint16_t errorCode = can.begin(settings, NULL);
   if (errorCode == 0)
   {
     Serial.print("Bit Rate prescaler: ");
