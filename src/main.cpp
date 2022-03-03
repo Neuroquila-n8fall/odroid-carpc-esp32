@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <BleKeyboard.h>
-#include <analogWrite.h>
 #include <Wire.h>
 #include <Adafruit_INA219.h>
 /*
@@ -29,10 +28,11 @@ void setup()
   pinMode(PIN_ODROID_POWER_INPUT, INPUT_PULLUP);    //Odroid VOUT Pin als Rückmeldung ob der PC eingeschaltet ist
   pinMode(PIN_ODROID_DISPLAY_POWER_BUTTON, OUTPUT); //Opto 3 - Display Power Button
   pinMode(LED_BUILTIN, OUTPUT);                     //LED
-  pinMode(PIN_DEBUG, INPUT_PULLUP);                 //Debug Switch Pin
-  pinMode(PIN_VU7A_BRIGHTNESS, OUTPUT);             //Display Helligkeitssteuerung
-  analogWriteResolution(PIN_VU7A_BRIGHTNESS, 12);   //DUE arbeitet mit 12 bits. Das hat immer sehr gut funktioniert.
-  analogWriteFrequency(PIN_VU7A_BRIGHTNESS, 980);   //4103 LED Driver arbeitet mit bis zu 1kHz. Wir nehmen hier das was der DUE bereits geleistet hat.
+  pinMode(PIN_DEBUG, INPUT_PULLUP);                 // Debug Switch Pin
+  pinMode(PIN_VU7A_BRIGHTNESS, OUTPUT);             // Display Helligkeitssteuerung
+
+  ledcSetup(VU7A_PWMChannel, VU7A_PWMFreq, VU7A_PWMResolution);
+  ledcAttachPin(PIN_VU7A_BRIGHTNESS, VU7A_PWMChannel);    
 
   hibernateActive = false;
 
@@ -43,9 +43,9 @@ void setup()
   };
 
   //Display von ganz dunkel nach ganz Hell stellen. Quasi als Test
-  for (int i = 0; i <= 255; i++)
+  for (int i = 0; i <= VU7A_MAX_DUTY_CYCLE; i++)
   {
-    analogWrite(PIN_VU7A_BRIGHTNESS, i);
+    ledcWrite(VU7A_PWMChannel, i);
   }
   digitalWrite(LED_BUILTIN, HIGH);
 
@@ -882,7 +882,7 @@ void onCasCentralLockingReceived(CANMessage frame)
       Serial.print("Light Dashboard OK:");
       Serial.println(sendResult);
       //Displayhelligkeit auf Maximum
-      analogWrite(PIN_VU7A_BRIGHTNESS, 255);
+      ledcWrite(VU7A_PWMChannel, VU7A_MAX_DUTY_CYCLE);
     }
     //Schließen:  00DF40FF
     if (frame.data[0] == 0x00 && frame.data[1] == 0x30 && frame.data[2] == 0x04 && frame.data[3] == 0x60)
@@ -895,7 +895,7 @@ void onCasCentralLockingReceived(CANMessage frame)
       }
       stopOdroid();
       //Displayhelligkeit auf vertretbares Minimum
-      analogWrite(PIN_VU7A_BRIGHTNESS, 50);
+      ledcWrite(VU7A_PWMChannel, 800);
     }
     //Kofferraum: Wird nur gesendet bei langem Druck auf die Taste
   }
@@ -939,7 +939,7 @@ void onRainLightSensorReceived(CANMessage frame)
   {
     for (int i = lastBrightness; i <= val; i++)
     {
-      analogWrite(PIN_VU7A_BRIGHTNESS, i);
+      ledcWrite(VU7A_PWMChannel, i);
       delay(10);
     }
   }
@@ -949,7 +949,7 @@ void onRainLightSensorReceived(CANMessage frame)
   {
     for (int i = lastBrightness; i >= val; i--)
     {
-      analogWrite(PIN_VU7A_BRIGHTNESS, i);
+      ledcWrite(VU7A_PWMChannel, i);
       delay(10);
     }
   }
@@ -957,7 +957,7 @@ void onRainLightSensorReceived(CANMessage frame)
   //Wenn der Wert unverändert ist zur Sicherheit nochmals letzten Wert schreiben.
   if (val == lastBrightness)
   {
-    analogWrite(PIN_VU7A_BRIGHTNESS, val);
+    ledcWrite(VU7A_PWMChannel, val);
     return;
   }
 

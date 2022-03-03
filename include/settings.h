@@ -102,6 +102,14 @@ extern int ledState;
 extern const int MIN_LM_LIGHT_LEVEL;
 //Höchster Helligkeitswert vom Lichtsensor (Direktes Sonnenlicht)
 extern const int MAX_LM_LIGHT_LEVEL;
+
+extern int VU7A_dutyCycle;
+//Display Helligkeitssteuerung. PWM Einstellungen für 4103 LED Treiber
+extern const int VU7A_PWMFreq;                          // 4103 LED Driver arbeitet mit bis zu 1kHz. Wir nehmen hier das was der DUE bereits geleistet hat.
+extern const int VU7A_PWMChannel;
+extern const int VU7A_PWMResolution;                     // DUE arbeitet mit 12 bits. Das hat immer sehr gut funktioniert.
+extern const int VU7A_MAX_DUTY_CYCLE;
+
 //Minimaler Steuerwert für Displayhelligkeit
 extern const int MIN_DISPLAY_BRIGHTNESS;
 //Maximaler Steuerwert für Displayhelligkeit
