@@ -4,7 +4,7 @@
 #include <BleKeyboard.h>
 
 extern BleKeyboard bleKeyboard;
-const MediaKeyReport KEY_MEDIA_TRACK_FASTFORWARD = {0,16};
-const MediaKeyReport KEY_MEDIA_TRACK_REWIND = {0,32};
+extern const MediaKeyReport KEY_MEDIA_TRACK_FASTFORWARD;
+extern const MediaKeyReport KEY_MEDIA_TRACK_REWIND;
 
 #endif
