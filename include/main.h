@@ -25,8 +25,6 @@ extern void timeKeeper();
 extern void sendKey(uint8_t keycode);
 //Interaktion mit serieller Konsole
 extern void readConsole();
-//CAN Nachricht senden.
-extern bool sendMessage(int address, byte len, const uint8_t *buf);
 //Power Saver
 extern void enterPowerSaving();
 //Exit Power Saving

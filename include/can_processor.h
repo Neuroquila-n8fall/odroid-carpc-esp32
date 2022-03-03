@@ -2,7 +2,7 @@
 #define _CAN_PROCESSOR_H
 
 #include <Arduino.h>
-#include <ACAN2515.h>
+#include <mcp_can.h>
 #include <settings.h>
 #include <ble_keyboard.h>
 #include <pins.h>
@@ -10,6 +10,12 @@
 #include <k-can-messages.h>
 #include <k-can.h>
 #include <idrive-controls.h>
+
+struct CANMessage {
+    long unsigned int rxId;
+    unsigned char len = 0;
+    unsigned char data[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+} frame;
 
 //——————————————————————————————————————————————————————————————————————————————
 //  MCP2515 Driver object
@@ -20,7 +26,7 @@
 extern void printCanMsg(int canId, unsigned char *buffer, int len);
 //CAN Output als CSV
 extern void printCanMsgCsv(int canId, unsigned char *buffer, int len);
-extern bool sendMessage(int address, byte len, const uint8_t *buf);
+extern bool sendMessage(unsigned long address, byte len, byte *buf);
 extern void processCanMessages();
 //CAN Initialisieren
 extern bool setupCan();

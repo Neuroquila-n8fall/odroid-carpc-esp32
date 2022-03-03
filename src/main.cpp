@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <BleKeyboard.h>
-#include <ACAN2515.h>
 #include <analogWrite.h>
 #include <Wire.h>
 #include <Adafruit_INA219.h>
@@ -13,7 +12,7 @@
 #include <ble_keyboard.h>
 
 Adafruit_INA219 ina219;
-ACAN2515 can(MCP2515_CS, SPI, 255);
+MCP_CAN CAN(MCP2515_CS);
 void setup()
 {
   delay(1000);
@@ -222,11 +221,25 @@ void loop()
 
 void processCanMessages()
 {
-  can.poll();
-  CANMessage frame;
-  if (can.available())
+  
+  if (!digitalRead(MCP2515_INT))
   {
-    can.receive(frame);
+    
+
+
+    long unsigned int rxId;
+    unsigned char len = 0;
+    unsigned char rxBuf[8];
+
+    CAN.readMsgBuf(&rxId, &len, rxBuf);
+
+    //Buffer in data kopieren.
+    byte i = len;
+    while (i--)
+    *(frame.data + i) = *(rxBuf + i);
+    frame.len = len;
+    frame.rxId = rxId;
+
     previousCanMsgTimestamp = currentMillis;
     canbusEnabled = true;
 
@@ -237,12 +250,12 @@ void processCanMessages()
     }
     
 
-    uint32_t canId = frame.id;
+    uint32_t canId = rxId;
 
     //Alle CAN Nachrichten ausgeben, wenn debug aktiv.
-    if (true)
+    if (false)
     {
-      printCanMsgCsv(canId, frame.data, frame.len);
+      printCanMsgCsv(canId, rxBuf, len);
     }
 
     switch (canId)
@@ -462,7 +475,7 @@ void checkPins()
   //Prüfe alle Faktoren für Start, Stopp oder Pause des Odroid.
   checkIgnitionState();
 
-  if(true)
+  if(false)
   {
     Serial.print("[GPIO] Odroid: ");
     Serial.println(odroidRunning == 1 ? "Running" : "Stopped");
@@ -649,60 +662,37 @@ void readConsole()
   }
 }
 
-bool sendMessage(int address, byte len, const uint8_t *buf)
+bool sendMessage(unsigned long address, byte len, byte *buf)
 {
-  CANMessage frame;
-  frame.id = address;
-  frame.len = len;
-  //These are here for reference only and are the default values of the ctr
-  frame.ext = false;
-  frame.rtr = false;
-  frame.idx = 0;
+  CANMessage frameToSend;
+  frameToSend.rxId = address;
+  frameToSend.len = len;
 
   //Buffer in data kopieren.
   byte i = len;
   while (i--)
-    *(frame.data + i) = *(buf + i);
-  return can.tryToSend(frame);
+    *(frameToSend.data + i) = *(buf + i);
+    
+  byte sendResult = CAN.sendMsgBuf(address, len, buf);
+
+  return sendResult == 0;    
 }
 
 bool setupCan()
 {
-
-  //Setup CAN Module
-  SPI.begin(MCP2515_SCK, MCP2515_MISO, MCP2515_MOSI);
-  ACAN2515Settings settings(QUARTZ_FREQUENCY, 100UL * 1000UL); // CAN bit rate 100 kb/s
-
-  //const uint16_t errorCode = can.begin(settings, [] { can.isr(); });
-  const uint16_t errorCode = can.begin(settings, NULL);
-  if (errorCode == 0)
+  int errorCode = CAN.begin(MCP_ANY, CAN_100KBPS, MCP_16MHZ);
+  // Initialize MCP2515 running at 16MHz with a baudrate of 100kb/s and the masks and filters disabled.
+  if (errorCode == CAN_OK)
   {
-    Serial.print("Bit Rate prescaler: ");
-    Serial.println(settings.mBitRatePrescaler);
-    Serial.print("Propagation Segment: ");
-    Serial.println(settings.mPropagationSegment);
-    Serial.print("Phase segment 1: ");
-    Serial.println(settings.mPhaseSegment1);
-    Serial.print("Phase segment 2: ");
-    Serial.println(settings.mPhaseSegment2);
-    Serial.print("SJW: ");
-    Serial.println(settings.mSJW);
-    Serial.print("Triple Sampling: ");
-    Serial.println(settings.mTripleSampling ? "yes" : "no");
-    Serial.print("Actual bit rate: ");
-    Serial.print(settings.actualBitRate());
-    Serial.println(" bit/s");
-    Serial.print("Exact bit rate ? ");
-    Serial.println(settings.exactBitRate() ? "yes" : "no");
-    Serial.print("Sample point: ");
-    Serial.print(settings.samplePointFromBitStart());
-    Serial.println("%");
+    Serial.println("MCP2515 Initialized Successfully!");
+    CAN.setMode(MCP_NORMAL); // Change to normal mode to allow messages to be transmitted
   }
   else
   {
-    Serial.print("Configuration error 0x");
-    Serial.println(errorCode, HEX);
+    Serial.println("Error Initializing MCP2515...");
   }
+  //Interrupt Pin
+  pinMode(MCP2515_INT, INPUT);
 
   previousCanMsgTimestamp = millis();
 
@@ -730,7 +720,7 @@ void checkVoltage()
 
   float averageVoltageReading = totalReadingsValue / maxAverageReadings;
 
-  if(true)
+  if(false)
   {
     Serial.print("[Voltage] V: ");
     Serial.println(busvoltage);
