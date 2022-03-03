@@ -20,8 +20,6 @@ void setup()
 {
   delay(1000);
   Serial.begin(serialBaud);
-  //Zeitstempel einrichten
-  buildtimeStamp();
 
   pinMode(PIN_IGNITION_INPUT, INPUT_PULLUP);        //Zündungs-Pin
   pinMode(PIN_ODROID_POWER_BUTTON, OUTPUT);         //Opto 2 - Odroid Power Button
@@ -158,10 +156,6 @@ void loop()
 
     digitalWrite(LED_BUILTIN, ledState);
     previousOneSecondTick = currentMillis;
-    //Aktualisieren.
-    timeKeeper();
-    //Zeitstempel Variablen füllen
-    buildtimeStamp();
   }
 
   
@@ -387,14 +381,10 @@ void processCanMessages()
 
       if (frame.data[3] == 0x00)
       {
-        //Zeitstempel
-        Serial.print(timeStamp + '\t');
         Serial.println("Engine RUNNING");
       }
       if (frame.data[3] == 0x09)
       {
-        //Zeitstempel
-        Serial.print(timeStamp + '\t');
         Serial.println("Engine OFF");
       }
       break;
@@ -419,7 +409,9 @@ void processCanMessages()
       // #6 nach links shiften und 5 addieren
       year = (frame.data[6] << 8) + frame.data[5];
 
-      buildtimeStamp();
+      Serial.print("[KOMBI] Date & Time Received: ");
+      Serial.printf("%02d:%02d:%02d %02d.%02d.%u", hours, minutes, seconds, days, month, year);
+      Serial.println();
 
       break;
     }
@@ -435,8 +427,7 @@ void processCanMessages()
     //Der iDrive Controller ist jetzt als deaktiviert zu betrachten und muss neu intialisiert werden
     iDriveInitSuccess = false;
     canbusEnabled = false;
-    //Zeitstempel
-    Serial.print(timeStamp + '\t');
+
     Serial.println("[checkCan] Keine Nachrichten seit 30 Sekunden. Der Bus wird nun als deaktiviert betrachtet.");
     //enterPowerSaving();
   }
@@ -505,8 +496,7 @@ void checkIgnitionState()
 
 void startOdroid()
 {
-  //Zeitstempel
-  Serial.print(timeStamp + '\t');
+
   Serial.print("[startOdroid] Odroid Status:");
   Serial.println(odroidRunning == LOW ? "AUS" : "AN");
   //Mehrfachen Aufruf verhindern - auch wenn der PC bereits läuft
@@ -519,8 +509,7 @@ void startOdroid()
   odroidStartRequested = true;
   pendingAction = ODROID_START;
   digitalWrite(PIN_ODROID_POWER_BUTTON, HIGH);
-  //Zeitstempel
-  Serial.print(timeStamp + '\t');
+
   Serial.println("[startOdroid] Start angefordert.");
   previousOdroidActionTime = millis();
 }
@@ -547,8 +536,6 @@ void pauseOdroid()
 
 void stopOdroid()
 {
-  //Zeitstempel
-  Serial.print(timeStamp + '\t');
   Serial.print("[stopOdroid] Odroid Status:");
   Serial.println(odroidRunning == LOW ? "AUS" : "AN");
   //Mehrfachen Aufruf verhindern - auch wenn der PC bereits aus ist. Das würde diesen nämlich einschalten.
@@ -565,13 +552,6 @@ void stopOdroid()
   Serial.println("[stopOdroid] Herunterfahren angefordert");
 
   previousOdroidActionTime = millis();
-}
-
-void buildtimeStamp()
-{
-  sprintf(timeStamp, "%02d:%02d:%02d %02d.%02d.%u", hours, minutes, seconds, days, month, year);
-  sprintf(timeString, "%02d:%02d:%02d", hours, minutes, seconds);
-  sprintf(dateString, "%02d.%02d.%u", days, month, year);
 }
 
 void printCanMsg(int canId, unsigned char *buffer, int len)
@@ -608,38 +588,6 @@ void printCanMsgCsv(int canId, uint8_t *buffer, int len)
     }
   }
   Serial.println();
-}
-
-void timeKeeper()
-{
-  unsigned long currentMillis = millis();
-  //Nur, wenn die letzte Aktualisierung über CAN mehr als eine Sekunde zurückliegt
-  if (currentMillis - previousCanDateTime > 1000)
-  {
-    if (hours == 23 && minutes == 59 && seconds == 59)
-    {
-      hours = 0;
-      minutes = 0;
-      seconds = 0;
-    }
-    if (minutes == 59 && seconds == 59)
-    {
-      hours++;
-      minutes = 0;
-      seconds = 0;
-    }
-    if (seconds == 59)
-    {
-      minutes++;
-      seconds = 0;
-      buildtimeStamp();
-      //Tick abgeschlossen
-      return;
-    }
-    buildtimeStamp();
-    //Sekunden erhöhen
-    seconds++;
-  }
 }
 
 void readConsole()
@@ -1057,8 +1005,6 @@ void onIdriveRotaryMovement(CANMessage frame)
         }
         rotaryposition--;
       }
-      //Zeitstempel
-      Serial.print(timeStamp + '\t');
       Serial.print("[checkCan] iDrive Rotation: ");
       switch (iDriveRotDir)
       {

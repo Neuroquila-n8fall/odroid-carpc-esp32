@@ -86,12 +86,6 @@ extern int days;
 extern int month;
 //Jahr
 extern int year;
-//Langer Zeitstempel
-extern char timeStamp[20];
-//Uhrzeit als Text
-extern char timeString[9];
-//Datum als Text
-extern char dateString[11];
 
 //Initialstatus der eingebauten LED
 extern int ledState;
