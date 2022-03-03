@@ -233,14 +233,14 @@ void processCanMessages()
     // Normalbetrieb
     if (hibernateActive)
     {
-      exitPowerSaving();
+      //exitPowerSaving();
     }
     
 
     uint32_t canId = frame.id;
 
     //Alle CAN Nachrichten ausgeben, wenn debug aktiv.
-    if (true)
+    if (false)
     {
       printCanMsgCsv(canId, frame.data, frame.len);
     }
@@ -266,6 +266,7 @@ void processCanMessages()
     }
     case IDRIVE_CTRL_INIT_RESPONSE_ADDR:
     {
+      Serial.println("Controller Init OK");
       iDriveInitSuccess = true;
       break;
     }
@@ -422,7 +423,7 @@ void processCanMessages()
     //Zeitstempel
     Serial.print(timeStamp + '\t');
     Serial.println("[checkCan] Keine Nachrichten seit 30 Sekunden. Der Bus wird nun als deaktiviert betrachtet.");
-    enterPowerSaving();
+    //enterPowerSaving();
   }
 }
 
@@ -462,7 +463,7 @@ void checkPins()
   //Prüfe alle Faktoren für Start, Stopp oder Pause des Odroid.
   checkIgnitionState();
 
-  if(true)
+  if(false)
   {
     Serial.print("[GPIO] Odroid: ");
     Serial.println(odroidRunning == 1 ? "Running" : "Stopped");
@@ -663,6 +664,9 @@ bool sendMessage(int address, byte len, const uint8_t *buf)
   byte i = len;
   while (i--)
     *(frame.data + i) = *(buf + i);
+
+  Serial.print("Sending Message: ");
+  printCanMsgCsv(address, frame.data, len);
   return can.tryToSend(frame);
 }
 
@@ -730,7 +734,7 @@ void checkVoltage()
 
   float averageVoltageReading = totalReadingsValue / maxAverageReadings;
 
-  if(true)
+  if(false)
   {
     Serial.print("[Voltage] V: ");
     Serial.println(busvoltage);
@@ -842,7 +846,7 @@ void onCasMessageReceived(CANMessage frame)
     if (!iDriveInitSuccess)
     {
       bool sendResult = sendMessage(IDRIVE_CTRL_INIT_ADDR, 8, IDRIVE_CTRL_INIT);
-      Serial.print("CAN Send OK:");
+      Serial.print("[KEY-EVENT] Init Controller OK:");
       Serial.println(sendResult);
     }
   }
@@ -850,6 +854,8 @@ void onCasMessageReceived(CANMessage frame)
 
 void onIdriveStatusReceived(CANMessage frame)
 {
+  Serial.println("Controller Init Status Message");
+  printCanMsgCsv(frame.id, frame.data, frame.len);
   if (frame.data[4] == 6)
   {
     Serial.println("Controller ist nicht initialisiert.");
@@ -885,12 +891,12 @@ void onCasCentralLockingReceived(CANMessage frame)
 
       //Controller initialisieren.
       bool sendResult = sendMessage(IDRIVE_CTRL_INIT_ADDR, 8, IDRIVE_CTRL_INIT);
-      Serial.print("CAN Send OK:");
+      Serial.print("Init Controller OK:");
       Serial.println(sendResult);
       previousIdriveInitTimestamp = currentMillis;
       //Zur Kontrolle die Instrumentenbeleuchtung einschalten.
       sendResult = sendMessage(DASHBOARD_LIGHTING_ADDR, 2, DASHBOARD_LIGHTING_ON);
-      Serial.print("CAN Send OK:");
+      Serial.print("Light Dashboard OK:");
       Serial.println(sendResult);
       //Displayhelligkeit auf Maximum
       analogWrite(PIN_VU7A_BRIGHTNESS, 255);
