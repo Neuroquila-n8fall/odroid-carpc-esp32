@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <BleKeyboard.h>
-#include <ACAN2515.h>
 #include <analogWrite.h>
 #include <Wire.h>
 #include <Adafruit_INA219.h>
@@ -11,9 +10,13 @@
 #include <main.h>
 #include <can_processor.h>
 #include <ble_keyboard.h>
+#include <ESP32CAN.h>
+#include <CAN_config.h>
+
+CAN_device_t CAN_cfg;
 
 Adafruit_INA219 ina219;
-ACAN2515 can(MCP2515_CS, SPI, 255);
+
 void setup()
 {
   delay(1000);
@@ -36,7 +39,7 @@ void setup()
   //Setup CAN Module. Es ist nicht notwendig auf den Bus zu warten
   if(setupCan())
   {
-    // Todo?
+    Serial.println("[Setup] CAN-Interface initialized.");
   };
 
   //Display von ganz dunkel nach ganz Hell stellen. Quasi als Test
@@ -222,22 +225,34 @@ void loop()
 
 void processCanMessages()
 {
-  can.poll();
-  CANMessage frame;
-  if (can.available())
+
+  CAN_frame_t rx_frame;
+  
+
+
+
+  // receive next CAN frame from queue
+  if (xQueueReceive(CAN_cfg.rx_queue, &rx_frame, 3 * portTICK_PERIOD_MS) == pdTRUE)
   {
-    can.receive(frame);
+
+    // Buffer in data kopieren.
+    byte i = rx_frame.FIR.B.DLC;
+    while (i--)
+      *(frame.data + i) = *(rx_frame.data.u8 + i);
+
+    frame.len = rx_frame.FIR.B.DLC;
+    frame.rxId = rx_frame.MsgID;
+
     previousCanMsgTimestamp = currentMillis;
     canbusEnabled = true;
 
     // Normalbetrieb
     if (hibernateActive)
     {
-      //exitPowerSaving();
+      // exitPowerSaving();
     }
-    
 
-    uint32_t canId = frame.id;
+    uint32_t canId = frame.rxId;
 
     //Alle CAN Nachrichten ausgeben, wenn debug aktiv.
     if (false)
@@ -652,61 +667,29 @@ void readConsole()
 
 bool sendMessage(int address, byte len, const uint8_t *buf)
 {
-  CANMessage frame;
-  frame.id = address;
-  frame.len = len;
-  //These are here for reference only and are the default values of the ctr
-  frame.ext = false;
-  frame.rtr = false;
-  frame.idx = 0;
+  CAN_frame_t frameToSend;
+  frameToSend.MsgID = address;
+  frameToSend.FIR.B.DLC = len;
+  frameToSend.FIR.B.FF = CAN_frame_std;
 
   //Buffer in data kopieren.
   byte i = len;
   while (i--)
-    *(frame.data + i) = *(buf + i);
+    *(frameToSend.data.u8 + i) = *(buf + i);
 
-  Serial.print("Sending Message: ");
-  printCanMsgCsv(address, frame.data, len);
-  return can.tryToSend(frame);
+  return ESP32Can.CANWriteFrame(&frameToSend) == 1;
 }
 
 bool setupCan()
 {
-
-  //Setup CAN Module
-  SPI.begin(MCP2515_SCK, MCP2515_MISO, MCP2515_MOSI);
-  ACAN2515Settings settings(QUARTZ_FREQUENCY, 100UL * 1000UL); // CAN bit rate 100 kb/s
-
-  //const uint16_t errorCode = can.begin(settings, [] { can.isr(); });
-  const uint16_t errorCode = can.begin(settings, NULL);
-  if (errorCode == 0)
-  {
-    Serial.print("Bit Rate prescaler: ");
-    Serial.println(settings.mBitRatePrescaler);
-    Serial.print("Propagation Segment: ");
-    Serial.println(settings.mPropagationSegment);
-    Serial.print("Phase segment 1: ");
-    Serial.println(settings.mPhaseSegment1);
-    Serial.print("Phase segment 2: ");
-    Serial.println(settings.mPhaseSegment2);
-    Serial.print("SJW: ");
-    Serial.println(settings.mSJW);
-    Serial.print("Triple Sampling: ");
-    Serial.println(settings.mTripleSampling ? "yes" : "no");
-    Serial.print("Actual bit rate: ");
-    Serial.print(settings.actualBitRate());
-    Serial.println(" bit/s");
-    Serial.print("Exact bit rate ? ");
-    Serial.println(settings.exactBitRate() ? "yes" : "no");
-    Serial.print("Sample point: ");
-    Serial.print(settings.samplePointFromBitStart());
-    Serial.println("%");
-  }
-  else
-  {
-    Serial.print("Configuration error 0x");
-    Serial.println(errorCode, HEX);
-  }
+  /* set CAN pins and baudrate */
+  CAN_cfg.speed = CAN_SPEED_100KBPS;
+  CAN_cfg.tx_pin_id = GPIO_NUM_25;
+  CAN_cfg.rx_pin_id = GPIO_NUM_26;
+  /* create a queue for CAN receiving */
+  CAN_cfg.rx_queue = xQueueCreate(10, sizeof(CAN_frame_t));
+  // initialize CAN Module
+  int errorCode = ESP32Can.CANInit();
 
   previousCanMsgTimestamp = millis();
 
@@ -734,7 +717,7 @@ void checkVoltage()
 
   float averageVoltageReading = totalReadingsValue / maxAverageReadings;
 
-  if(false)
+  if(true)
   {
     Serial.print("[Voltage] V: ");
     Serial.println(busvoltage);
@@ -855,7 +838,7 @@ void onCasMessageReceived(CANMessage frame)
 void onIdriveStatusReceived(CANMessage frame)
 {
   Serial.println("Controller Init Status Message");
-  printCanMsgCsv(frame.id, frame.data, frame.len);
+  printCanMsgCsv(frame.rxId, frame.data, frame.len);
   if (frame.data[4] == 6)
   {
     Serial.println("Controller ist nicht initialisiert.");
