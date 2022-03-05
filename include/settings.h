@@ -42,7 +42,7 @@ extern int odroidRunning; //Ergebnis vom Odroid GPIO #1. LOW = aus, HIGH = an
 extern int lastIgnitionState; //Hält den letzten Zündungsstatus
 
 extern const int CYCLE_DELAY; //Verzögerung in ms pro Schleifendurchlauf
-static unsigned long currentMillis = 0L;
+static unsigned long currentMillis;
 
 extern unsigned long previousOdroidActionTime;  //Vorherige Zeitmessung für Odroid Steuerung
 extern unsigned long previousMainTaskTime;      //Vorherige Zeitmessung für allgemeinen Timer
@@ -56,6 +56,7 @@ extern bool odroidPauseRequested;    //Sleep oder Wakeup angefordert
 extern bool startup; //Steuerung ist gerade angelaufen.
 
 extern bool debugMode; //Debugmodus aktiv?
+extern bool debugCanMessages; //Debug der CAN-Kommunikation
 
 extern int ignitionOn; //Zündung - HIGH = Aus, LOW = An
 
@@ -72,7 +73,7 @@ extern bool hibernateActive;
 extern const int serialBaud;
 
 //zuletzt errechneter Helligkeitswert für Display.
-extern int lastBrightness;
+extern int currentBrightness;
 
 //Stunden
 extern int hours;
@@ -108,5 +109,14 @@ extern const int VU7A_MAX_DUTY_CYCLE;
 extern const int MIN_DISPLAY_BRIGHTNESS;
 //Maximaler Steuerwert für Displayhelligkeit
 extern const int MAX_DISPLAY_BRIGHTNESS;
+
+//Zielhelligkeit
+extern int targetBrightness;
+
+//MFL Kommandos verarbeiten?
+extern bool disableMFLCommands;
+
+//Motorstatus
+extern bool engineRunning;
 
 #endif

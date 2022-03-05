@@ -135,6 +135,10 @@ void loop()
 
   //CAN Nachrichten verarbeiten
   processCanMessages();
+
+  //Displayhelligkeit einstellen
+  setDisplayBrightness();
+
   //Konsole
   readConsole();
 
@@ -156,9 +160,7 @@ void loop()
 
     digitalWrite(LED_BUILTIN, ledState);
     previousOneSecondTick = currentMillis;
-  }
-
-  
+  }  
 
   //Allgemeine Funktionen. Nur ausführen, wenn Zyklus erreicht wurde und keine ausstehenden Aktionen laufen, die ein zeitkritisches Verändern der Ausgänge beinhalten.
   if (currentMillis - previousMainTaskTime >= CYCLE_DELAY && !anyPendingActions())
@@ -217,13 +219,30 @@ void loop()
   }
 }
 
+void setDisplayBrightness()
+{
+  if(currentBrightness > targetBrightness)
+  {
+    currentBrightness--;
+  }
+
+  if (currentBrightness < targetBrightness)
+  {
+    currentBrightness++;
+  }  
+
+  //Save cycles if the desired value has been reached.
+  if (currentBrightness == targetBrightness)
+  {
+    return;
+  }  
+
+  ledcWrite(VU7A_PWMChannel, currentBrightness);
+}
+
 void processCanMessages()
 {
-
   CAN_frame_t rx_frame;
-  
-
-
 
   // receive next CAN frame from queue
   if (xQueueReceive(CAN_cfg.rx_queue, &rx_frame, 3 * portTICK_PERIOD_MS) == pdTRUE)
@@ -249,7 +268,7 @@ void processCanMessages()
     uint32_t canId = frame.rxId;
 
     //Alle CAN Nachrichten ausgeben, wenn debug aktiv.
-    if (false)
+    if (debugCanMessages)
     {
       printCanMsgCsv(canId, frame.data, frame.len);
     }
@@ -259,6 +278,10 @@ void processCanMessages()
     //MFL Knöpfe
     case MFL_BUTTON_ADDR:
     {
+      //MFL Kommandoverarbeitung deaktiviert, da die FSE vo Vocomo bereits über BT diese Kommandos verschickt.
+      //    Dies würde zu Dopplungen führen, beispielsweise würden bei "next" zwei Titel übersprungen werden.
+      if(disableMFLCommands) return;
+
       onMflButtonPressed(frame);
       break;
     }
@@ -376,16 +399,19 @@ void processCanMessages()
     //Batteriespannung und Status
     case DMEDDE_POWERMGMT_BATTERY_ADDR:
     {
+      //Batteriespannung vom JBE
       //(((Byte[1]-240 )*256)+Byte[0])/68
       //float batteryVoltage = (((frame.data[1] - 240) * 256) + frame.data[0]) / 68;
 
       if (frame.data[3] == 0x00)
       {
         Serial.println("Engine RUNNING");
+        engineRunning = true;
       }
       if (frame.data[3] == 0x09)
       {
         Serial.println("Engine OFF");
+        engineRunning = false;
       }
       break;
     }
@@ -469,7 +495,7 @@ void checkPins()
   //Prüfe alle Faktoren für Start, Stopp oder Pause des Odroid.
   checkIgnitionState();
 
-  if(false)
+  if(debugMode)
   {
     Serial.print("[GPIO] Odroid: ");
     Serial.println(odroidRunning == 1 ? "Running" : "Stopped");
@@ -665,7 +691,7 @@ void checkVoltage()
 
   float averageVoltageReading = totalReadingsValue / maxAverageReadings;
 
-  if(true)
+  if(debugMode)
   {
     Serial.print("[Voltage] V: ");
     Serial.println(busvoltage);
@@ -673,6 +699,9 @@ void checkVoltage()
     Serial.println(averageVoltageReading);
   }
 
+  //Nichts unternehmen, wenn der Motor läuft.
+  if(engineRunning) return;
+  //Wenn der Motor nicht läuft, checks durchführen und ggf. Odroid herunterfahren.
   if (averageVoltageReading < 12.10F && odroidRunning == HIGH && !anyPendingActions())
   {
     stopOdroid();
@@ -777,7 +806,7 @@ void onCasMessageReceived(CANMessage frame)
     if (!iDriveInitSuccess)
     {
       bool sendResult = sendMessage(IDRIVE_CTRL_INIT_ADDR, 8, IDRIVE_CTRL_INIT);
-      Serial.print("[KEY-EVENT] Init Controller OK:");
+      Serial.print("[Key-Inserted] Init Controller OK:");
       Serial.println(sendResult);
     }
   }
@@ -872,45 +901,17 @@ void onRainLightSensorReceived(CANMessage frame)
   }
 
   //Display auf volle Helligkeit einstellen. Das ist unser Basiswert
-  int val = 255;
+  int val = MAX_DISPLAY_BRIGHTNESS;
 
   val = map(lightValue, MIN_LM_LIGHT_LEVEL, MAX_LM_LIGHT_LEVEL, MIN_DISPLAY_BRIGHTNESS, MAX_DISPLAY_BRIGHTNESS);
-  Serial.print("Licht (Roh, CTRL):\t");
+  Serial.print("Licht (Lichtwert, Roh, CTRL):\t");
   Serial.print(lightValue);
   Serial.print('\t');
   Serial.print(frame.data[1]);
   Serial.print('\t');
   Serial.println(val);
 
-  //Wenn der aktuelle Wert größer als der zuletzt gespeicherte ist, zählen wir vom letzten Wert hoch.
-  if (val > lastBrightness)
-  {
-    for (int i = lastBrightness; i <= val; i++)
-    {
-      ledcWrite(VU7A_PWMChannel, i);
-      delay(10);
-    }
-  }
-
-  //Wenn der aktuelle Wert kleiner als der zuletzt gespeicherte ist, dann schrittweise die Helligkeit vom letzten bekannten Wert absenken
-  if (val < lastBrightness)
-  {
-    for (int i = lastBrightness; i >= val; i--)
-    {
-      ledcWrite(VU7A_PWMChannel, i);
-      delay(10);
-    }
-  }
-
-  //Wenn der Wert unverändert ist zur Sicherheit nochmals letzten Wert schreiben.
-  if (val == lastBrightness)
-  {
-    ledcWrite(VU7A_PWMChannel, val);
-    return;
-  }
-
-  //letzten Wert zum Vergleich speichern
-  lastBrightness = val;
+  targetBrightness = val;
 }
 
 void onIdriveRotaryMovement(CANMessage frame)

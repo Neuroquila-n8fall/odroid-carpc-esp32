@@ -41,7 +41,8 @@ bool odroidPauseRequested = false;    //Sleep oder Wakeup angefordert
 
 bool startup = true; //Steuerung ist gerade angelaufen.
 
-bool debugMode = false; //Debugmodus aktiv?
+bool debugMode = true; //Debugmodus aktiv?
+bool debugCanMessages = false; //Debug der CAN-Kommunikation
 
 int ignitionOn = HIGH; //Zündung - HIGH = Aus, LOW = An
 
@@ -58,7 +59,7 @@ bool hibernateActive = false;
 const int serialBaud = 115200;
 
 //zuletzt errechneter Helligkeitswert für Display.
-int lastBrightness = 0;
+int currentBrightness = 0;
 
 //Stunden
 int hours = 0;
@@ -100,3 +101,11 @@ const int VU7A_MAX_DUTY_CYCLE = (int)(pow(2, VU7A_PWMResolution) - 1);
 const int MIN_DISPLAY_BRIGHTNESS = 800;
 //Maximaler Steuerwert für Displayhelligkeit
 const int MAX_DISPLAY_BRIGHTNESS = VU7A_MAX_DUTY_CYCLE;
+
+int targetBrightness = MAX_DISPLAY_BRIGHTNESS;
+
+//MFL Kommandos verarbeiten?
+bool disableMFLCommands = true;
+
+//Motorstatus
+bool engineRunning = false;
