@@ -1,11 +1,9 @@
-# odroid-carpc-due
-An Arduino Due project for controlling an Odroid N2 via BMW Keyfob and iDrive.
+# odroid-carpc-esp32
+An ESP32 project for controlling an Odroid N2 via BMW Keyfob and iDrive.
 
 ## Hardware used
 - BMW 1-Series 2009
-- Arduino Due
-- Canbus module with 16mhz crystal
-- Sparkfun Bluesmirf Silver
+- ESP32 Devkit
 - iDrive 7-Button Controller 
 
 ## Purpose
@@ -14,11 +12,7 @@ As a bonus it's designed to support an iDrive controller as an input device for 
 See: https://play.google.com/store/apps/details?id=flar2.homebutton
 
 ## 3rd Party Libraries used
-I'm using a modified version of the BPLib that now supports sending and holding multiple keys. That's probably important for future tweaks. The original library only supports sending one single key and modifiers.
-See: https://github.com/Neuroquila-n8fall/BPLib
 
-Also: Seeedstudios Canbus Shield library
-See: https://github.com/Seeed-Studio/CAN_BUS_Shield
 
 ## Usage
 ### Wiring

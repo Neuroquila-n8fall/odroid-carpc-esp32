@@ -490,7 +490,7 @@ void checkPins()
   odroidRunning = !digitalRead(PIN_ODROID_POWER_INPUT);
 
   //Status Debug-Pin
-  //debugMode = !digitalRead(PIN_DEBUG);
+  debugMode = !digitalRead(PIN_DEBUG);
 
   //Prüfe alle Faktoren für Start, Stopp oder Pause des Odroid.
   checkIgnitionState();
