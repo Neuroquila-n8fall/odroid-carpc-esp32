@@ -490,7 +490,7 @@ void checkPins()
   odroidRunning = !digitalRead(PIN_ODROID_POWER_INPUT);
 
   //Status Debug-Pin
-  debugMode = !digitalRead(PIN_DEBUG);
+  //debugMode = !digitalRead(PIN_DEBUG);
 
   //Prüfe alle Faktoren für Start, Stopp oder Pause des Odroid.
   checkIgnitionState();
@@ -814,8 +814,6 @@ void onCasMessageReceived(CANMessage frame)
 
 void onIdriveStatusReceived(CANMessage frame)
 {
-  Serial.println("Controller Init Status Message");
-  printCanMsgCsv(frame.rxId, frame.data, frame.len);
   if (frame.data[4] == 6)
   {
     Serial.println("Controller ist nicht initialisiert.");

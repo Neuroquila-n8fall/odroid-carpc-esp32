@@ -98,7 +98,7 @@ const int VU7A_PWMResolution = 12;                     // DUE arbeitet mit 12 bi
 const int VU7A_MAX_DUTY_CYCLE = (int)(pow(2, VU7A_PWMResolution) - 1);
 
 //Minimaler Steuerwert für Displayhelligkeit
-const int MIN_DISPLAY_BRIGHTNESS = 800;
+const int MIN_DISPLAY_BRIGHTNESS = 1000;
 //Maximaler Steuerwert für Displayhelligkeit
 const int MAX_DISPLAY_BRIGHTNESS = VU7A_MAX_DUTY_CYCLE;
 
