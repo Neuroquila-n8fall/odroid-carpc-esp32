@@ -1,8 +1,6 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <BleKeyboard.h>
-#include <ACAN2515.h>
-#include <analogWrite.h>
 #include <Wire.h>
 #include <Adafruit_INA219.h>
 /*
@@ -11,38 +9,41 @@
 #include <main.h>
 #include <can_processor.h>
 #include <ble_keyboard.h>
+#include <ESP32CAN.h>
+#include <CAN_config.h>
+
+CAN_device_t CAN_cfg;
 
 Adafruit_INA219 ina219;
-ACAN2515 can(MCP2515_CS, SPI, 255);
+
 void setup()
 {
   delay(1000);
   Serial.begin(serialBaud);
-  //Zeitstempel einrichten
-  buildtimeStamp();
 
   pinMode(PIN_IGNITION_INPUT, INPUT_PULLUP);        //Zündungs-Pin
   pinMode(PIN_ODROID_POWER_BUTTON, OUTPUT);         //Opto 2 - Odroid Power Button
   pinMode(PIN_ODROID_POWER_INPUT, INPUT_PULLUP);    //Odroid VOUT Pin als Rückmeldung ob der PC eingeschaltet ist
   pinMode(PIN_ODROID_DISPLAY_POWER_BUTTON, OUTPUT); //Opto 3 - Display Power Button
   pinMode(LED_BUILTIN, OUTPUT);                     //LED
-  pinMode(PIN_DEBUG, INPUT_PULLUP);                 //Debug Switch Pin
-  pinMode(PIN_VU7A_BRIGHTNESS, OUTPUT);             //Display Helligkeitssteuerung
-  analogWriteResolution(PIN_VU7A_BRIGHTNESS, 12);   //DUE arbeitet mit 12 bits. Das hat immer sehr gut funktioniert.
-  analogWriteFrequency(PIN_VU7A_BRIGHTNESS, 980);   //4103 LED Driver arbeitet mit bis zu 1kHz. Wir nehmen hier das was der DUE bereits geleistet hat.
+  pinMode(PIN_DEBUG, INPUT_PULLUP);                 // Debug Switch Pin
+  pinMode(PIN_VU7A_BRIGHTNESS, OUTPUT);             // Display Helligkeitssteuerung
+
+  ledcSetup(VU7A_PWMChannel, VU7A_PWMFreq, VU7A_PWMResolution);
+  ledcAttachPin(PIN_VU7A_BRIGHTNESS, VU7A_PWMChannel);    
 
   hibernateActive = false;
 
   //Setup CAN Module. Es ist nicht notwendig auf den Bus zu warten
   if(setupCan())
   {
-    // Todo?
+    Serial.println("[Setup] CAN-Interface initialized.");
   };
 
   //Display von ganz dunkel nach ganz Hell stellen. Quasi als Test
-  for (int i = 0; i <= 255; i++)
+  for (int i = 0; i <= VU7A_MAX_DUTY_CYCLE; i++)
   {
-    analogWrite(PIN_VU7A_BRIGHTNESS, i);
+    ledcWrite(VU7A_PWMChannel, i);
   }
   digitalWrite(LED_BUILTIN, HIGH);
 
@@ -134,6 +135,10 @@ void loop()
 
   //CAN Nachrichten verarbeiten
   processCanMessages();
+
+  //Displayhelligkeit einstellen
+  setDisplayBrightness();
+
   //Konsole
   readConsole();
 
@@ -155,13 +160,7 @@ void loop()
 
     digitalWrite(LED_BUILTIN, ledState);
     previousOneSecondTick = currentMillis;
-    //Aktualisieren.
-    timeKeeper();
-    //Zeitstempel Variablen füllen
-    buildtimeStamp();
-  }
-
-  
+  }  
 
   //Allgemeine Funktionen. Nur ausführen, wenn Zyklus erreicht wurde und keine ausstehenden Aktionen laufen, die ein zeitkritisches Verändern der Ausgänge beinhalten.
   if (currentMillis - previousMainTaskTime >= CYCLE_DELAY && !anyPendingActions())
@@ -220,27 +219,56 @@ void loop()
   }
 }
 
+void setDisplayBrightness()
+{
+  if(currentBrightness > targetBrightness)
+  {
+    currentBrightness--;
+  }
+
+  if (currentBrightness < targetBrightness)
+  {
+    currentBrightness++;
+  }  
+
+  //Save cycles if the desired value has been reached.
+  if (currentBrightness == targetBrightness)
+  {
+    return;
+  }  
+
+  ledcWrite(VU7A_PWMChannel, currentBrightness);
+}
+
 void processCanMessages()
 {
-  can.poll();
-  CANMessage frame;
-  if (can.available())
+  CAN_frame_t rx_frame;
+
+  // receive next CAN frame from queue
+  if (xQueueReceive(CAN_cfg.rx_queue, &rx_frame, 3 * portTICK_PERIOD_MS) == pdTRUE)
   {
-    can.receive(frame);
+
+    // Buffer in data kopieren.
+    byte i = rx_frame.FIR.B.DLC;
+    while (i--)
+      *(frame.data + i) = *(rx_frame.data.u8 + i);
+
+    frame.len = rx_frame.FIR.B.DLC;
+    frame.rxId = rx_frame.MsgID;
+
     previousCanMsgTimestamp = currentMillis;
     canbusEnabled = true;
 
     // Normalbetrieb
     if (hibernateActive)
     {
-      exitPowerSaving();
+      // exitPowerSaving();
     }
-    
 
-    uint32_t canId = frame.id;
+    uint32_t canId = frame.rxId;
 
     //Alle CAN Nachrichten ausgeben, wenn debug aktiv.
-    if (true)
+    if (debugCanMessages)
     {
       printCanMsgCsv(canId, frame.data, frame.len);
     }
@@ -250,6 +278,10 @@ void processCanMessages()
     //MFL Knöpfe
     case MFL_BUTTON_ADDR:
     {
+      //MFL Kommandoverarbeitung deaktiviert, da die FSE vo Vocomo bereits über BT diese Kommandos verschickt.
+      //    Dies würde zu Dopplungen führen, beispielsweise würden bei "next" zwei Titel übersprungen werden.
+      if(disableMFLCommands) return;
+
       onMflButtonPressed(frame);
       break;
     }
@@ -266,6 +298,7 @@ void processCanMessages()
     }
     case IDRIVE_CTRL_INIT_RESPONSE_ADDR:
     {
+      Serial.println("Controller Init OK");
       iDriveInitSuccess = true;
       break;
     }
@@ -366,20 +399,19 @@ void processCanMessages()
     //Batteriespannung und Status
     case DMEDDE_POWERMGMT_BATTERY_ADDR:
     {
+      //Batteriespannung vom JBE
       //(((Byte[1]-240 )*256)+Byte[0])/68
       //float batteryVoltage = (((frame.data[1] - 240) * 256) + frame.data[0]) / 68;
 
       if (frame.data[3] == 0x00)
       {
-        //Zeitstempel
-        Serial.print(timeStamp + '\t');
         Serial.println("Engine RUNNING");
+        engineRunning = true;
       }
       if (frame.data[3] == 0x09)
       {
-        //Zeitstempel
-        Serial.print(timeStamp + '\t');
         Serial.println("Engine OFF");
+        engineRunning = false;
       }
       break;
     }
@@ -403,7 +435,9 @@ void processCanMessages()
       // #6 nach links shiften und 5 addieren
       year = (frame.data[6] << 8) + frame.data[5];
 
-      buildtimeStamp();
+      Serial.print("[KOMBI] Date & Time Received: ");
+      Serial.printf("%02d:%02d:%02d %02d.%02d.%u", hours, minutes, seconds, days, month, year);
+      Serial.println();
 
       break;
     }
@@ -419,10 +453,9 @@ void processCanMessages()
     //Der iDrive Controller ist jetzt als deaktiviert zu betrachten und muss neu intialisiert werden
     iDriveInitSuccess = false;
     canbusEnabled = false;
-    //Zeitstempel
-    Serial.print(timeStamp + '\t');
+
     Serial.println("[checkCan] Keine Nachrichten seit 30 Sekunden. Der Bus wird nun als deaktiviert betrachtet.");
-    enterPowerSaving();
+    //enterPowerSaving();
   }
 }
 
@@ -462,7 +495,7 @@ void checkPins()
   //Prüfe alle Faktoren für Start, Stopp oder Pause des Odroid.
   checkIgnitionState();
 
-  if(true)
+  if(debugMode)
   {
     Serial.print("[GPIO] Odroid: ");
     Serial.println(odroidRunning == 1 ? "Running" : "Stopped");
@@ -489,8 +522,7 @@ void checkIgnitionState()
 
 void startOdroid()
 {
-  //Zeitstempel
-  Serial.print(timeStamp + '\t');
+
   Serial.print("[startOdroid] Odroid Status:");
   Serial.println(odroidRunning == LOW ? "AUS" : "AN");
   //Mehrfachen Aufruf verhindern - auch wenn der PC bereits läuft
@@ -503,8 +535,7 @@ void startOdroid()
   odroidStartRequested = true;
   pendingAction = ODROID_START;
   digitalWrite(PIN_ODROID_POWER_BUTTON, HIGH);
-  //Zeitstempel
-  Serial.print(timeStamp + '\t');
+
   Serial.println("[startOdroid] Start angefordert.");
   previousOdroidActionTime = millis();
 }
@@ -531,8 +562,6 @@ void pauseOdroid()
 
 void stopOdroid()
 {
-  //Zeitstempel
-  Serial.print(timeStamp + '\t');
   Serial.print("[stopOdroid] Odroid Status:");
   Serial.println(odroidRunning == LOW ? "AUS" : "AN");
   //Mehrfachen Aufruf verhindern - auch wenn der PC bereits aus ist. Das würde diesen nämlich einschalten.
@@ -549,13 +578,6 @@ void stopOdroid()
   Serial.println("[stopOdroid] Herunterfahren angefordert");
 
   previousOdroidActionTime = millis();
-}
-
-void buildtimeStamp()
-{
-  sprintf(timeStamp, "%02d:%02d:%02d %02d.%02d.%u", hours, minutes, seconds, days, month, year);
-  sprintf(timeString, "%02d:%02d:%02d", hours, minutes, seconds);
-  sprintf(dateString, "%02d.%02d.%u", days, month, year);
 }
 
 void printCanMsg(int canId, unsigned char *buffer, int len)
@@ -594,38 +616,6 @@ void printCanMsgCsv(int canId, uint8_t *buffer, int len)
   Serial.println();
 }
 
-void timeKeeper()
-{
-  unsigned long currentMillis = millis();
-  //Nur, wenn die letzte Aktualisierung über CAN mehr als eine Sekunde zurückliegt
-  if (currentMillis - previousCanDateTime > 1000)
-  {
-    if (hours == 23 && minutes == 59 && seconds == 59)
-    {
-      hours = 0;
-      minutes = 0;
-      seconds = 0;
-    }
-    if (minutes == 59 && seconds == 59)
-    {
-      hours++;
-      minutes = 0;
-      seconds = 0;
-    }
-    if (seconds == 59)
-    {
-      minutes++;
-      seconds = 0;
-      buildtimeStamp();
-      //Tick abgeschlossen
-      return;
-    }
-    buildtimeStamp();
-    //Sekunden erhöhen
-    seconds++;
-  }
-}
-
 void readConsole()
 {
   if (Serial.available() > 0)
@@ -651,58 +641,29 @@ void readConsole()
 
 bool sendMessage(int address, byte len, const uint8_t *buf)
 {
-  CANMessage frame;
-  frame.id = address;
-  frame.len = len;
-  //These are here for reference only and are the default values of the ctr
-  frame.ext = false;
-  frame.rtr = false;
-  frame.idx = 0;
+  CAN_frame_t frameToSend;
+  frameToSend.MsgID = address;
+  frameToSend.FIR.B.DLC = len;
+  frameToSend.FIR.B.FF = CAN_frame_std;
 
   //Buffer in data kopieren.
   byte i = len;
   while (i--)
-    *(frame.data + i) = *(buf + i);
-  return can.tryToSend(frame);
+    *(frameToSend.data.u8 + i) = *(buf + i);
+
+  return ESP32Can.CANWriteFrame(&frameToSend) == 1;
 }
 
 bool setupCan()
 {
-
-  //Setup CAN Module
-  SPI.begin(MCP2515_SCK, MCP2515_MISO, MCP2515_MOSI);
-  ACAN2515Settings settings(QUARTZ_FREQUENCY, 100UL * 1000UL); // CAN bit rate 100 kb/s
-
-  //const uint16_t errorCode = can.begin(settings, [] { can.isr(); });
-  const uint16_t errorCode = can.begin(settings, NULL);
-  if (errorCode == 0)
-  {
-    Serial.print("Bit Rate prescaler: ");
-    Serial.println(settings.mBitRatePrescaler);
-    Serial.print("Propagation Segment: ");
-    Serial.println(settings.mPropagationSegment);
-    Serial.print("Phase segment 1: ");
-    Serial.println(settings.mPhaseSegment1);
-    Serial.print("Phase segment 2: ");
-    Serial.println(settings.mPhaseSegment2);
-    Serial.print("SJW: ");
-    Serial.println(settings.mSJW);
-    Serial.print("Triple Sampling: ");
-    Serial.println(settings.mTripleSampling ? "yes" : "no");
-    Serial.print("Actual bit rate: ");
-    Serial.print(settings.actualBitRate());
-    Serial.println(" bit/s");
-    Serial.print("Exact bit rate ? ");
-    Serial.println(settings.exactBitRate() ? "yes" : "no");
-    Serial.print("Sample point: ");
-    Serial.print(settings.samplePointFromBitStart());
-    Serial.println("%");
-  }
-  else
-  {
-    Serial.print("Configuration error 0x");
-    Serial.println(errorCode, HEX);
-  }
+  /* set CAN pins and baudrate */
+  CAN_cfg.speed = CAN_SPEED_100KBPS;
+  CAN_cfg.tx_pin_id = GPIO_NUM_25;
+  CAN_cfg.rx_pin_id = GPIO_NUM_26;
+  /* create a queue for CAN receiving */
+  CAN_cfg.rx_queue = xQueueCreate(10, sizeof(CAN_frame_t));
+  // initialize CAN Module
+  int errorCode = ESP32Can.CANInit();
 
   previousCanMsgTimestamp = millis();
 
@@ -730,7 +691,7 @@ void checkVoltage()
 
   float averageVoltageReading = totalReadingsValue / maxAverageReadings;
 
-  if(true)
+  if(debugMode)
   {
     Serial.print("[Voltage] V: ");
     Serial.println(busvoltage);
@@ -738,6 +699,9 @@ void checkVoltage()
     Serial.println(averageVoltageReading);
   }
 
+  //Nichts unternehmen, wenn der Motor läuft.
+  if(engineRunning) return;
+  //Wenn der Motor nicht läuft, checks durchführen und ggf. Odroid herunterfahren.
   if (averageVoltageReading < 12.10F && odroidRunning == HIGH && !anyPendingActions())
   {
     stopOdroid();
@@ -842,7 +806,7 @@ void onCasMessageReceived(CANMessage frame)
     if (!iDriveInitSuccess)
     {
       bool sendResult = sendMessage(IDRIVE_CTRL_INIT_ADDR, 8, IDRIVE_CTRL_INIT);
-      Serial.print("CAN Send OK:");
+      Serial.print("[Key-Inserted] Init Controller OK:");
       Serial.println(sendResult);
     }
   }
@@ -885,15 +849,15 @@ void onCasCentralLockingReceived(CANMessage frame)
 
       //Controller initialisieren.
       bool sendResult = sendMessage(IDRIVE_CTRL_INIT_ADDR, 8, IDRIVE_CTRL_INIT);
-      Serial.print("CAN Send OK:");
+      Serial.print("Init Controller OK:");
       Serial.println(sendResult);
       previousIdriveInitTimestamp = currentMillis;
       //Zur Kontrolle die Instrumentenbeleuchtung einschalten.
       sendResult = sendMessage(DASHBOARD_LIGHTING_ADDR, 2, DASHBOARD_LIGHTING_ON);
-      Serial.print("CAN Send OK:");
+      Serial.print("Light Dashboard OK:");
       Serial.println(sendResult);
       //Displayhelligkeit auf Maximum
-      analogWrite(PIN_VU7A_BRIGHTNESS, 255);
+      ledcWrite(VU7A_PWMChannel, VU7A_MAX_DUTY_CYCLE);
     }
     //Schließen:  00DF40FF
     if (frame.data[0] == 0x00 && frame.data[1] == 0x30 && frame.data[2] == 0x04 && frame.data[3] == 0x60)
@@ -906,7 +870,7 @@ void onCasCentralLockingReceived(CANMessage frame)
       }
       stopOdroid();
       //Displayhelligkeit auf vertretbares Minimum
-      analogWrite(PIN_VU7A_BRIGHTNESS, 50);
+      ledcWrite(VU7A_PWMChannel, 800);
     }
     //Kofferraum: Wird nur gesendet bei langem Druck auf die Taste
   }
@@ -935,45 +899,17 @@ void onRainLightSensorReceived(CANMessage frame)
   }
 
   //Display auf volle Helligkeit einstellen. Das ist unser Basiswert
-  int val = 255;
+  int val = MAX_DISPLAY_BRIGHTNESS;
 
   val = map(lightValue, MIN_LM_LIGHT_LEVEL, MAX_LM_LIGHT_LEVEL, MIN_DISPLAY_BRIGHTNESS, MAX_DISPLAY_BRIGHTNESS);
-  Serial.print("Licht (Roh, CTRL):\t");
+  Serial.print("Licht (Lichtwert, Roh, CTRL):\t");
   Serial.print(lightValue);
   Serial.print('\t');
   Serial.print(frame.data[1]);
   Serial.print('\t');
   Serial.println(val);
 
-  //Wenn der aktuelle Wert größer als der zuletzt gespeicherte ist, zählen wir vom letzten Wert hoch.
-  if (val > lastBrightness)
-  {
-    for (int i = lastBrightness; i <= val; i++)
-    {
-      analogWrite(PIN_VU7A_BRIGHTNESS, i);
-      delay(10);
-    }
-  }
-
-  //Wenn der aktuelle Wert kleiner als der zuletzt gespeicherte ist, dann schrittweise die Helligkeit vom letzten bekannten Wert absenken
-  if (val < lastBrightness)
-  {
-    for (int i = lastBrightness; i >= val; i--)
-    {
-      analogWrite(PIN_VU7A_BRIGHTNESS, i);
-      delay(10);
-    }
-  }
-
-  //Wenn der Wert unverändert ist zur Sicherheit nochmals letzten Wert schreiben.
-  if (val == lastBrightness)
-  {
-    analogWrite(PIN_VU7A_BRIGHTNESS, val);
-    return;
-  }
-
-  //letzten Wert zum Vergleich speichern
-  lastBrightness = val;
+  targetBrightness = val;
 }
 
 void onIdriveRotaryMovement(CANMessage frame)
@@ -1068,8 +1004,6 @@ void onIdriveRotaryMovement(CANMessage frame)
         }
         rotaryposition--;
       }
-      //Zeitstempel
-      Serial.print(timeStamp + '\t');
       Serial.print("[checkCan] iDrive Rotation: ");
       switch (iDriveRotDir)
       {

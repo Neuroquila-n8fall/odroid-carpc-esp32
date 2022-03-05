@@ -36,7 +36,7 @@ extern bool anyPendingActions();
 //Checks if voltage leves are within bounds and executes actions accordingly
 extern void checkVoltage();
 //Set Display Brightness
-extern void setDisplayBrightness(int value);
+extern void setDisplayBrightness();
 
 
 #endif

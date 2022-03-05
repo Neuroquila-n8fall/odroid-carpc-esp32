@@ -41,7 +41,8 @@ bool odroidPauseRequested = false;    //Sleep oder Wakeup angefordert
 
 bool startup = true; //Steuerung ist gerade angelaufen.
 
-bool debugMode = false; //Debugmodus aktiv?
+bool debugMode = true; //Debugmodus aktiv?
+bool debugCanMessages = false; //Debug der CAN-Kommunikation
 
 int ignitionOn = HIGH; //Zündung - HIGH = Aus, LOW = An
 
@@ -58,7 +59,7 @@ bool hibernateActive = false;
 const int serialBaud = 115200;
 
 //zuletzt errechneter Helligkeitswert für Display.
-int lastBrightness = 0;
+int currentBrightness = 0;
 
 //Stunden
 int hours = 0;
@@ -88,7 +89,23 @@ int ledState = LOW;
 const int MIN_LM_LIGHT_LEVEL = 17;
 //Höchster Helligkeitswert vom Lichtsensor (Direktes Sonnenlicht)
 const int MAX_LM_LIGHT_LEVEL = 80;
+
+int VU7A_dutyCycle;
+//Display Helligkeitssteuerung. PWM Einstellungen für 4103 LED Treiber
+const int VU7A_PWMFreq = 980;                          // 4103 LED Driver arbeitet mit bis zu 1kHz. Wir nehmen hier das was der DUE bereits geleistet hat.
+const int VU7A_PWMChannel = 0;
+const int VU7A_PWMResolution = 12;                     // DUE arbeitet mit 12 bits. Das hat immer sehr gut funktioniert.
+const int VU7A_MAX_DUTY_CYCLE = (int)(pow(2, VU7A_PWMResolution) - 1);
+
 //Minimaler Steuerwert für Displayhelligkeit
-const int MIN_DISPLAY_BRIGHTNESS = 50;
+const int MIN_DISPLAY_BRIGHTNESS = 1000;
 //Maximaler Steuerwert für Displayhelligkeit
-const int MAX_DISPLAY_BRIGHTNESS = 255;
+const int MAX_DISPLAY_BRIGHTNESS = VU7A_MAX_DUTY_CYCLE;
+
+int targetBrightness = MAX_DISPLAY_BRIGHTNESS;
+
+//MFL Kommandos verarbeiten?
+bool disableMFLCommands = true;
+
+//Motorstatus
+bool engineRunning = false;

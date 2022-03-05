@@ -42,7 +42,7 @@ extern int odroidRunning; //Ergebnis vom Odroid GPIO #1. LOW = aus, HIGH = an
 extern int lastIgnitionState; //Hält den letzten Zündungsstatus
 
 extern const int CYCLE_DELAY; //Verzögerung in ms pro Schleifendurchlauf
-static unsigned long currentMillis = 0L;
+static unsigned long currentMillis;
 
 extern unsigned long previousOdroidActionTime;  //Vorherige Zeitmessung für Odroid Steuerung
 extern unsigned long previousMainTaskTime;      //Vorherige Zeitmessung für allgemeinen Timer
@@ -56,6 +56,7 @@ extern bool odroidPauseRequested;    //Sleep oder Wakeup angefordert
 extern bool startup; //Steuerung ist gerade angelaufen.
 
 extern bool debugMode; //Debugmodus aktiv?
+extern bool debugCanMessages; //Debug der CAN-Kommunikation
 
 extern int ignitionOn; //Zündung - HIGH = Aus, LOW = An
 
@@ -72,7 +73,7 @@ extern bool hibernateActive;
 extern const int serialBaud;
 
 //zuletzt errechneter Helligkeitswert für Display.
-extern int lastBrightness;
+extern int currentBrightness;
 
 //Stunden
 extern int hours;
@@ -86,12 +87,6 @@ extern int days;
 extern int month;
 //Jahr
 extern int year;
-//Langer Zeitstempel
-extern char timeStamp[20];
-//Uhrzeit als Text
-extern char timeString[9];
-//Datum als Text
-extern char dateString[11];
 
 //Initialstatus der eingebauten LED
 extern int ledState;
@@ -102,9 +97,26 @@ extern int ledState;
 extern const int MIN_LM_LIGHT_LEVEL;
 //Höchster Helligkeitswert vom Lichtsensor (Direktes Sonnenlicht)
 extern const int MAX_LM_LIGHT_LEVEL;
+
+extern int VU7A_dutyCycle;
+//Display Helligkeitssteuerung. PWM Einstellungen für 4103 LED Treiber
+extern const int VU7A_PWMFreq;                          // 4103 LED Driver arbeitet mit bis zu 1kHz. Wir nehmen hier das was der DUE bereits geleistet hat.
+extern const int VU7A_PWMChannel;
+extern const int VU7A_PWMResolution;                     // DUE arbeitet mit 12 bits. Das hat immer sehr gut funktioniert.
+extern const int VU7A_MAX_DUTY_CYCLE;
+
 //Minimaler Steuerwert für Displayhelligkeit
 extern const int MIN_DISPLAY_BRIGHTNESS;
 //Maximaler Steuerwert für Displayhelligkeit
 extern const int MAX_DISPLAY_BRIGHTNESS;
+
+//Zielhelligkeit
+extern int targetBrightness;
+
+//MFL Kommandos verarbeiten?
+extern bool disableMFLCommands;
+
+//Motorstatus
+extern bool engineRunning;
 
 #endif

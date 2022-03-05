@@ -2,7 +2,6 @@
 #define _CAN_PROCESSOR_H
 
 #include <Arduino.h>
-#include <ACAN2515.h>
 #include <settings.h>
 #include <ble_keyboard.h>
 #include <pins.h>
@@ -10,6 +9,12 @@
 #include <k-can-messages.h>
 #include <k-can.h>
 #include <idrive-controls.h>
+
+struct CANMessage {
+    long unsigned int rxId;
+    unsigned char len = 0;
+    unsigned char data[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+} frame;
 
 //——————————————————————————————————————————————————————————————————————————————
 //  MCP2515 Driver object
