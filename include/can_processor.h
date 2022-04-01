@@ -3,7 +3,6 @@
 
 #include <Arduino.h>
 #include <settings.h>
-#include <ble_keyboard.h>
 #include <pins.h>
 #include <k-can-addresses.h>
 #include <k-can-messages.h>
@@ -30,16 +29,9 @@ extern void processCanMessages();
 //CAN Initialisieren
 extern bool setupCan();
 
-//Process MFL Button Press
-extern void onMflButtonPressed(CANMessage frame);
-//Process messages from CAS
-extern void onCasMessageReceived(CANMessage frame);
+
 //Process status messages from iDrive Controller
 extern void onIdriveStatusReceived(CANMessage frame);
-//Process status messages from remote fob and central locking
-extern void onCasCentralLockingReceived(CANMessage frame);
-//Process messages sent by the rain and light sensor
-extern void onRainLightSensorReceived(CANMessage frame);
 //Process messages sent by the rotary encoder of the iDrive controller
 extern void onIdriveRotaryMovement(CANMessage frame);
 //Process messages sent by the button encoder of the iDrive controller
