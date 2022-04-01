@@ -83,6 +83,22 @@ LM_REVERSESTATUS_ADDR = 0x3B0,
 
 //DME - DDE Powermanagement Batterspiespannung
 DMEDDE_POWERMGMT_BATTERY_ADDR = 0x3B4,
+
+//FRM - Indicator Light
+FRM_INDICATOR_ADDR = 0x1F6,
+
+//JBE - Drivers Door Status
+JBE_DRIVER_DOOR_STATUS_ADDR = 0x0E2,
+
+//JBE - Passenger Door Status
+JBE_PASSENGER_DOOR_STATUS_ADDR = 0x0EA,
+
+//CAS - Ignition Status
+CAS_IGNITION_STATUS_ADDR = 0x26E,
+
+//Indicator Stalk
+INDICATOR_STALK_ADDR = 0x1EE,
+
 };
 
 
