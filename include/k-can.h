@@ -19,7 +19,7 @@ const int CAN_TIMEOUT = 30000;
   Konstanten für CAS
 */
 //CAS Debounce Timeout
-const int CAS_DEBOUNCE_TIMEOUT = 1000;
+const int CAS_DEBOUNCE_TIMEOUT = 500;
 
 /*
   Konstanten für MFL Knöpfe

@@ -606,6 +606,8 @@ void onCasCentralLockingReceived(CANMessage frame)
     {
       lastFobCommandMillis = currentMillis;
       openButtonCounter++;
+      Serial.print("Open Button Counter: ");
+      Serial.println(openButtonCounter);
       if (openButtonCounter == 3 && !LedsEnabled)
       {
         // Start the LED Show!
