@@ -214,11 +214,11 @@ void loop()
 
   // Check if CAS Key Event has a timeout and reset counters if this is the case.
   if (currentMillis - lastFobCommandMillis >= casCommandTimeOut)
-    {
-      Serial.println("CAS Timeout Reached. Resetting Counters.");
-      openButtonCounter = 0;
-      closeButtonCounter = 0;
-    }
+  {
+    Serial.println("CAS Timeout Reached. Resetting Counters.");
+    openButtonCounter = 0;
+    closeButtonCounter = 0;
+  }
 }
 
 void processCanMessages()
@@ -604,7 +604,6 @@ void onCasCentralLockingReceived(CANMessage frame)
   {
     previousCasMessageTimestamp = currentMillis;
 
-    
     //Öffnen:     00CF01FF
     if (frame.data[0] == 0x00 && frame.data[1] == 0x30 && frame.data[2] == 0x01 && frame.data[3] == 0x60)
     {
