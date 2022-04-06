@@ -67,6 +67,7 @@ int casCommandTimeOut = 5000;
 long lastFobCommandMillis = 0L;
 int openButtonCounter = 0;
 int closeButtonCounter = 0;
+bool casTimeoutReached = false;
 
 // ---------------------------------------
 // Door Status
@@ -110,29 +111,20 @@ bool LedsEnabled = false;
 // Profiles Enum
 typedef enum
 {
-  car,
   solid,
   cylon,
   rainbow,
-  meteor,
-  snowSparkle,
-  blurry,
-  ripple,
 } Profiles;
 
 Profiles activeProfile = solid;
 
-const int profileCount = 8;
+const int profileCount = 3;
 Profiles profileList[profileCount] =
     {
-        car,
         solid,
         cylon,
         rainbow,
-        meteor,
-        snowSparkle,
-        blurry,
-        ripple};
+};
 
 void setup()
 {
@@ -171,6 +163,8 @@ void setup()
   digitalWrite(LED_BUILTIN, HIGH);
 
   Serial.println("[Setup] Ready.");
+
+  lastFobCommandMillis = millis();
 }
 
 void loop()
@@ -213,11 +207,12 @@ void loop()
   }
 
   // Check if CAS Key Event has a timeout and reset counters if this is the case.
-  if (currentMillis - lastFobCommandMillis >= casCommandTimeOut)
+  if (currentMillis - lastFobCommandMillis >= casCommandTimeOut && !casTimeoutReached)
   {
     Serial.println("CAS Timeout Reached. Resetting Counters.");
     openButtonCounter = 0;
     closeButtonCounter = 0;
+    casTimeoutReached = true;
   }
 }
 
@@ -269,20 +264,6 @@ void processCanMessages()
       break;
     }
 
-    case JBE_DRIVER_DOOR_STATUS_ADDR:
-    {
-
-      onDriverDoorStatusReceived(frame);
-      break;
-    }
-
-    case JBE_PASSENGER_DOOR_STATUS_ADDR:
-    {
-
-      onPassengerDoorStatusReceived(frame);
-      break;
-    }
-
     case FRM_INDICATOR_ADDR:
     {
       onIndicatorStatusReceived(frame);
@@ -298,6 +279,11 @@ void processCanMessages()
     case CAS_ZV_ADDR:
     {
       onCasCentralLockingReceived(frame);
+    }
+
+    case CAS_DOOR_STATUS:
+    {
+      onDoorStatusReceived(frame);
     }
 
     default:
@@ -335,7 +321,7 @@ void exitPowerSaving()
 void printCanMsg(int canId, unsigned char *buffer, int len)
 {
   // OUTPUT:
-  // ABC FF  FF  FF  FF  FF  FF  FF  FF
+  // [ID] FF  FF  FF  FF  FF  FF  FF  FF
   Serial.print('[');
   Serial.print(canId, HEX);
   Serial.print(']');
@@ -351,7 +337,7 @@ void printCanMsg(int canId, unsigned char *buffer, int len)
 void printCanMsgCsv(int canId, uint8_t *buffer, int len)
 {
   // OUTPUT:
-  // ABC FF  FF  FF  FF  FF  FF  FF  FF
+  // ID;LEN;FF;FF;FF;FF;FF;FF;FF;FF
   Serial.print(canId, HEX);
   Serial.print(';');
   Serial.print(len);
@@ -412,6 +398,32 @@ void onIdriveStatusReceived(CANMessage frame)
   {
     iDriveInitSuccess = true;
   }
+}
+
+void onDoorStatusReceived(CANMessage frame)
+{
+        // 0000000 01010101 <- 
+      // Driver 
+      // Passenger
+      // Rear Driver
+      // Rear Passenger
+      if(bitRead(frame.data[1], 0) == 1)
+      {
+        driverDoorOpen = true;
+      }
+      else
+      {
+        driverDoorOpen = false;
+      }
+
+      if(bitRead(frame.data[1], 2) == 1)
+      {
+        passengerDoorOpen = true;
+      }
+      else
+      {
+        passengerDoorOpen = false;
+      }
 }
 
 void onIgnitionStatusReceived(CANMessage frame)
@@ -505,9 +517,6 @@ void onIndicatorStatusReceived(CANMessage frame)
 
 void showIndicator()
 {
-  // Do nothing if not explicitly enabled!
-  if (!LedsEnabled)
-    return;
 
   switch (ActiveIndicator)
   {
@@ -530,12 +539,14 @@ void showIndicator()
   case Off:
   {
     FastLED.clear(true);
+    showDoorLighting();
     break;
   }
 
   default:
     break;
   }
+  FastLED.show(true);
 }
 
 void onIndicatorStalkReceived(CANMessage frame)
@@ -569,41 +580,13 @@ void onIndicatorStalkReceived(CANMessage frame)
   }
 }
 
-void onDriverDoorStatusReceived(CANMessage frame)
-{
-  if (frame.data[3] == 0xFD)
-  {
-    Serial.println("Driver Door CLOSED");
-    driverDoorOpen = false;
-  }
-  if (frame.data[3] == 0xFC)
-  {
-    Serial.println("Driver Door OPEN");
-    driverDoorOpen = true;
-  }
-}
-
-void onPassengerDoorStatusReceived(CANMessage frame)
-{
-  if (frame.data[3] == 0xFD)
-  {
-    Serial.println("Passenger Door CLOSED");
-    passengerDoorOpen = false;
-  }
-  if (frame.data[3] == 0xFC)
-  {
-    Serial.println("Passenger Door OPEN");
-    passengerDoorOpen = true;
-  }
-}
-
 void onCasCentralLockingReceived(CANMessage frame)
 {
   // Debounce: Befehle werden erst wieder verarbeitet, wenn der Timeout abgelaufen ist.
   if (currentMillis - previousCasMessageTimestamp > CAS_DEBOUNCE_TIMEOUT)
   {
     previousCasMessageTimestamp = currentMillis;
-
+    casTimeoutReached = false;
     //Öffnen:     00CF01FF
     if (frame.data[0] == 0x00 && frame.data[1] == 0x30 && frame.data[2] == 0x01 && frame.data[3] == 0x60)
     {
@@ -634,6 +617,7 @@ void onCasCentralLockingReceived(CANMessage frame)
           activeProfile = profileList[0];
           Serial.print("End of Profiles. Switching to profile: ");
           Serial.println(activeProfile);
+          FastLED.clear(true);
         }
       }
     }
@@ -644,7 +628,7 @@ void onCasCentralLockingReceived(CANMessage frame)
       // LEDs ausschalten.
       FastLED.clear(true);
       LedsEnabled = false;
-      activeProfile = car;
+      activeProfile = solid;
       Serial.println("Car Closed. LEDs disabled.");
     }
     // Kofferraum: Wird nur gesendet bei langem Druck auf die Taste
@@ -655,60 +639,23 @@ void ShowLedEffect()
 {
   switch (activeProfile)
   {
-  case car:
-    // Do Car Lighting Related Stuff.
-    if (driverDoorOpen)
+  /* case car:
+  { 
+    TIMES_PER_SECOND(2)
     {
-      for (int i = BackLeds + 1; i < CenterLeds; i++)
-      {
-        Pixels[0][i] = CRGB::White;
-      }
+      showDoorLighting();
     }
-
-    if (passengerDoorOpen)
-    {
-      for (int i = BackLeds + 1; i < CenterLeds; i++)
-      {
-        Pixels[1][i] = CRGB::White;
-      }
-    }
-
-    // Turn off lights when the door is closed and the indicator is off.
-    if (!driverDoorOpen && ActiveIndicator == Off)
-    {
-      for (int i = BackLeds + 1; i < CenterLeds; i++)
-      {
-        Pixels[0][i] = CRGB::Black;
-      }
-    }
-
-    // Turn off lights when the door is closed and the indicator is off.
-    if (!passengerDoorOpen && ActiveIndicator == Off)
-    {
-      for (int i = BackLeds + 1; i < CenterLeds; i++)
-      {
-        Pixels[1][i] = CRGB::Black;
-      }
-    }
-    FastLED.show(brightness);
     break;
+  } */
   case solid:
+  {
     fill_solid(Pixels[0], ledCount[0], userColor);
     fill_solid(Pixels[1], ledCount[1], userColor);
     fill_solid(Pixels[2], ledCount[2], userColor);
     break;
-  case meteor:
-    if (millis() - delayTimer >= random(5000, 20000))
-    {
-      delayTimer = millis();
-      meteorRain(CRGB(0, 0, 0), userColor, 10, 64, true, 0);
-    }
-
-    break;
-  case snowSparkle:
-    SnowSparkle(30, random(100, 1000));
-    break;
+  }
   case cylon:
+  {
     TIMES_PER_SECOND(30)
     {
       // byte hue = beatsin8(32, 0, 255);
@@ -721,22 +668,40 @@ void ShowLedEffect()
       }
     }
     break;
-  case blurry:
-    BlurEffect();
-    break;
-  case ripple:
-    TIMES_PER_SECOND(updatesPerSecond)
-    {
-      RippleEffect();
-    }
-    break;
+  }
   default:
+  {
     static uint8_t startIndex = 0;
     startIndex = startIndex + 1;
     FillLEDsFromPaletteColors(startIndex);
     break;
   }
+  }
   FastLED.delay(1000 / updatesPerSecond);
+}
+
+void showDoorLighting()
+{
+      // Do Car Lighting Related Stuff.
+    if (driverDoorOpen)
+    {
+      DrawPixels(0,BackLeds+1,CenterLeds,CRGB::White);
+    }
+    else 
+    {
+      DrawPixels(0,BackLeds+1,CenterLeds,CRGB::Black);
+    }
+
+    if (passengerDoorOpen)
+    {
+      DrawPixels(1,BackLeds+1,CenterLeds,CRGB::White);
+    }
+    else
+    {
+      DrawPixels(1,BackLeds+1,CenterLeds,CRGB::Black);
+    }
+    
+    FastLED.show(brightness);
 }
 
 void meteorRain(CRGB ColorBackground, CRGB ColorMeteor, byte meteorSize, byte meteorTrailDecay, boolean meteorRandomDecay, int SpeedDelay)

@@ -99,6 +99,9 @@ CAS_IGNITION_STATUS_ADDR = 0x26E,
 //Indicator Stalk
 INDICATOR_STALK_ADDR = 0x1EE,
 
+//CAS - Door Status
+CAS_DOOR_STATUS = 0x2FC,
+
 };
 
 

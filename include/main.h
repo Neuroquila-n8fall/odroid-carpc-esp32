@@ -21,8 +21,7 @@ extern bool anyPendingActions();
 extern void onIgnitionStatusReceived(CANMessage frame);
 extern void onIndicatorStatusReceived(CANMessage frame);
 extern void onIndicatorStalkReceived(CANMessage frame);
-extern void onDriverDoorStatusReceived(CANMessage frame);
-extern void onPassengerDoorStatusReceived(CANMessage frame);
+extern void onDoorStatusReceived(CANMessage frame);
 extern void showIndicator();
 extern void onCasCentralLockingReceived(CANMessage frame);
  
@@ -40,6 +39,7 @@ extern void DrawPixels(int controller, float fPos, float count, CRGB color);
 extern void BlurEffect();
 extern void RippleEffect();
 extern void ShowLedEffect();
+extern void showDoorLighting();
 
 extern int wrap(int step, int channel);
 
