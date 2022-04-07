@@ -9,6 +9,8 @@
 #include <CAN_config.h>
 #include "FastLED.h"
 #include "PaletteEffects.h"
+#include "remotexy_cfg.h"
+#include <Preferences.h>
 
 #define FASTLED_INTERNAL
 
@@ -39,46 +41,29 @@ CRGB userColor = CRGB(255, 0, 0);
 
 CAN_device_t CAN_cfg;
 
-// ------------------------------------
-// Indicator Variables and Fields
-// ------------------------------------
-
-// Timestamp for last indicator "tick"
-long IndicatorMillis = 0L;
-// Enum for Indicators
-typedef enum
-{
-  Left,
-  Right,
-  Hazard,
-  Off
-} Indicator;
-
-// The currently active Indicator or mode.
-Indicator ActiveIndicator = Off;
-// Color of the indicator.
-CRGB IndicatorColor = CRGB(252, 165, 3);
+//Preferences Storage
+Preferences preferences;
 
 // ---------------------------------------
 // CAS Related
 // ---------------------------------------
+
 // Timeout for Fob Commands. Allow 5 seconds to execute commands via fob
 int casCommandTimeOut = 5000;
+// Timestamp of the last received fob command
 long lastFobCommandMillis = 0L;
+// Counter for the "Open" key on the fob
 int openButtonCounter = 0;
+// Counter for the "Close" key on the fob
 int closeButtonCounter = 0;
+// Flag for determine of the push-timeout has been reached.
 bool casTimeoutReached = false;
-
-// ---------------------------------------
-// Door Status
-// ---------------------------------------
-bool driverDoorOpen = false;
-bool passengerDoorOpen = false;
 
 // ---------------------------------------
 // LED Related Fields
 // ---------------------------------------
 
+// "Frames" per second to display on the strip. 60 is a good figure.
 int updatesPerSecond = 60;
 byte brightness = 255;
 byte color_red = 255;
@@ -100,31 +85,29 @@ int diff;
 uint32_t currentBg = random(256);
 uint32_t nextBg = currentBg;
 
-bool run = false;
-bool justBooted = true;
-
-ulong fiveSecondTimer;
-ulong delayTimer;
-
 bool LedsEnabled = false;
 
 // Profiles Enum
+// Note: If adding profiles which should be available through the key fob they have to be inserted before "LAST_PROFILE".
+//       Otherwise, add them after "LAST_PROFILE" but then you have to set the activeProfile explicitly.
 typedef enum
 {
   solid,
   cylon,
   rainbow,
+  LAST_PROFILE,
 } Profiles;
 
 Profiles activeProfile = solid;
 
-const int profileCount = 3;
-Profiles profileList[profileCount] =
+int profileCount = Profiles::LAST_PROFILE;
+
+const char *profileNames[] =
     {
-        solid,
-        cylon,
-        rainbow,
-};
+        "Solid",
+        "Cylon",
+        "Rainbow"
+        };
 
 void setup()
 {
@@ -133,20 +116,51 @@ void setup()
 
   pinMode(LED_BUILTIN, OUTPUT);     // LED
   pinMode(PIN_DEBUG, INPUT_PULLUP); // Debug Switch Pin
+  pinMode(PIN_LED_PSU_ENABLE, OUTPUT);
 
-  hibernateActive = false;
+  //Disable the LED PSU immediately!
+  //(wir wollen ja auf gar keinen Fall Ärger mit der Rennleitung haben, wa?)
+  digitalWrite(PIN_LED_PSU_ENABLE, HIGH);
+
+  RemoteXY_Init();
 
   // Disable ADC, save energy
+  // NOTE: This will crash the ESP immediately. Probably because of the CAN interface...who knows
   // adc_power_release();
   // setCpuFrequencyMhz(80);
 
-  // Setup CAN Module. Es ist nicht notwendig auf den Bus zu warten
+  //Restore Preferences
+    preferences.begin("Led-Settings", false);
+    color_red = preferences.getInt("color_red", 255);
+    color_green = preferences.getInt("color_green", 255);
+    color_blue = preferences.getInt("color_blue", 255);
+    userColor = CRGB(color_red, color_green, color_blue);
+    int storedProfile = preferences.getInt("activeProfile", 1);
+    activeProfile = Profiles(storedProfile);
+
+    brightness = preferences.getInt("brightness", 128);
+    int storedBlending = preferences.getInt("currentBlending", 1);
+    currentBlending = TBlendType(storedBlending);
+
+    //Restore Preferences for the RemoteXY App
+    //Map brightness range to slider
+    RemoteXY.brightnessSlider = map(brightness, 0, 255, 0, 100);
+    RemoteXY.effectSelect = activeProfile;
+    RemoteXY.userColor_r = color_red;
+    RemoteXY.userColor_g = color_green;
+    RemoteXY.userColor_b = color_blue;
+
+    userColor = CRGB(color_red, color_green, color_blue);
+
+  // Setup CAN Module. There's no need to wait for init to complete. It's instantaneous.
   if (setupCan())
   {
     Serial.println("[Setup] CAN-Interface initialized.");
   };
 
-  FastLED.setMaxPowerInVoltsAndMilliamps(5, 10000);
+  // We're dealing with 5 Volts an a maximum Power Output of 15A which translates to 75W
+  //  The PSU used is capable of delivering 130W of power but the wires of the strip may become a little bit toasty.
+  FastLED.setMaxPowerInVoltsAndMilliamps(5, 15000);
 
   delay(3000); // power-up safety delay
 
@@ -157,8 +171,11 @@ void setup()
   // Channel 3
   FastLED.addLeds<LED_TYPE, CHANNEL_3_PIN, COLOR_ORDER>(Pixels[2], ledCount[2]).setCorrection(TypicalLEDStrip);
 
-  FastLED.setBrightness(brightness);
+  // Clear the strip
   FastLED.clear(true);
+
+  // Set initial brightness
+  FastLED.setBrightness(brightness);
 
   digitalWrite(LED_BUILTIN, HIGH);
 
@@ -170,15 +187,58 @@ void setup()
 void loop()
 {
 
-  // Aktuelle Zeit
+  // Current timestamp
   currentMillis = millis();
 
-  // Indicator lights are only on for half a second.
-  if (currentMillis - IndicatorMillis >= 500 && ActiveIndicator != Off)
+  RemoteXY_Handler();
+
+  //Read / Set variables set by the "remotexy" app as long as it's connected.
+  if (RemoteXY.connect_flag == 1)
   {
-    ActiveIndicator = Off;
-    showIndicator();
+    //Set Color
+    if(RemoteXY.userColor_r != color_red) {
+      color_red = RemoteXY.userColor_r;
+      preferences.putInt("color_red", color_red);
+      };
+    if(RemoteXY.userColor_g != color_green) {
+      color_green = RemoteXY.userColor_g;
+      preferences.putInt("color_green", color_green);
+      };
+    if(RemoteXY.userColor_b != color_blue) {
+      color_blue = RemoteXY.userColor_b;
+      preferences.putInt("color_blue", color_blue);
+      };
+
+    userColor = CRGB(color_red, color_green, color_blue);
+
+    // Sync Brightness. 
+    // The slider goes from 0 to 100 whereas the actual brightness range of FastLED is 0x00 to 0xFF
+    // Map those values accordingly.
+    int actualBrightness = map(RemoteXY.brightnessSlider, 0, 100, 0, 255);
+
+    if (actualBrightness != brightness)
+    {
+      brightness = actualBrightness;
+      preferences.putInt("brightness", brightness);
+    }
+
+    //Sync profile
+    if(RemoteXY.effectSelect != activeProfile)
+    {
+      activeProfile = Profiles(RemoteXY.effectSelect);
+      preferences.putInt("activeProfile", activeProfile);
+    }
+
+    //Sync ON/OFF State.
+    //As a safety measure we can't activate the lights when the ignition is on
+    if (!ignitionOn)
+    {
+      LedsEnabled = RemoteXY.LedsEnabled == 1;
+    }
+    
+
   }
+  
 
   if (LedsEnabled)
   {
@@ -186,13 +246,12 @@ void loop()
     ShowLedEffect();
   }
 
-  // CAN Nachrichten verarbeiten
+  // Process CAN messages
   processCanMessages();
 
-  // 1-Second timer
-  if (currentMillis - previousOneSecondTick >= 1000)
+  EVERY_N_SECONDS(1)
   {
-    // Heartbeat
+    // Heartbeat LED
     if (ledState == LOW)
     {
       ledState = HIGH;
@@ -203,7 +262,6 @@ void loop()
     }
 
     digitalWrite(LED_BUILTIN, ledState);
-    previousOneSecondTick = currentMillis;
   }
 
   // Check if CAS Key Event has a timeout and reset counters if this is the case.
@@ -235,15 +293,9 @@ void processCanMessages()
     previousCanMsgTimestamp = currentMillis;
     canbusEnabled = true;
 
-    // Normalbetrieb
-    if (hibernateActive)
-    {
-      // exitPowerSaving();
-    }
-
     uint32_t canId = frame.rxId;
 
-    // Alle CAN Nachrichten ausgeben, wenn debug aktiv.
+    // Output all messages if debug is active
     if (debugCanMessages)
     {
       printCanMsgCsv(canId, frame.data, frame.len);
@@ -264,26 +316,15 @@ void processCanMessages()
       break;
     }
 
-    case FRM_INDICATOR_ADDR:
-    {
-      onIndicatorStatusReceived(frame);
-      break;
-    }
-
-    case INDICATOR_STALK_ADDR:
-    {
-      onIndicatorStalkReceived(frame);
-      break;
-    }
-
     case CAS_ZV_ADDR:
     {
       onCasCentralLockingReceived(frame);
     }
 
-    case CAS_DOOR_STATUS:
+    case CAS_ADDR:
     {
-      onDoorStatusReceived(frame);
+      onIgnitionStatusReceived(frame);
+      break;
     }
 
     default:
@@ -291,31 +332,16 @@ void processCanMessages()
     }
   }
 
-  // Timeout für Canbus.
+  // Timeout for Canbus.
   if (currentMillis - previousCanMsgTimestamp >= CAN_TIMEOUT && canbusEnabled == true)
   {
-    // Canbus wurde heruntergefahren. Es werden keinerlei Nachrichten mehr seit 30 Sekunden ausgetauscht.
-    // Der iDrive Controller ist jetzt als deaktiviert zu betrachten und muss neu intialisiert werden
+    // CAN shut down. No more messages were transmitted within the timeout period
+    // The iDrive Controller is now considered uninitialized and will require the init messages again the next time it's been woken up.
     iDriveInitSuccess = false;
     canbusEnabled = false;
 
-    Serial.println("[checkCan] Keine Nachrichten seit 30 Sekunden. Der Bus wird nun als deaktiviert betrachtet.");
-    // enterPowerSaving();
+    Serial.println("[processCanMessages] CAN message timeout reached. Network is considered offline.");
   }
-}
-
-void enterPowerSaving()
-{
-  Serial.println("[Power] Entering power saving...");
-  setCpuFrequencyMhz(80);
-  hibernateActive = true;
-}
-
-void exitPowerSaving()
-{
-  Serial.println("[Power] Exiting power saving mode...");
-  setCpuFrequencyMhz(240);
-  hibernateActive = false;
 }
 
 void printCanMsg(int canId, unsigned char *buffer, int len)
@@ -361,7 +387,7 @@ bool sendMessage(int address, byte len, const uint8_t *buf)
   frameToSend.FIR.B.DLC = len;
   frameToSend.FIR.B.FF = CAN_frame_std;
 
-  // Buffer in data kopieren.
+  // Copy buffer to data
   byte i = len;
   while (i--)
     *(frameToSend.data.u8 + i) = *(buf + i);
@@ -371,11 +397,11 @@ bool sendMessage(int address, byte len, const uint8_t *buf)
 
 bool setupCan()
 {
-  /* set CAN pins and baudrate */
+  // set CAN pins and baudrate
   CAN_cfg.speed = CAN_SPEED_100KBPS;
   CAN_cfg.tx_pin_id = GPIO_NUM_25;
   CAN_cfg.rx_pin_id = GPIO_NUM_26;
-  /* create a queue for CAN receiving */
+  // create a queue for CAN receiving
   CAN_cfg.rx_queue = xQueueCreate(10, sizeof(CAN_frame_t));
   // initialize CAN Module
   int errorCode = ESP32Can.CANInit();
@@ -389,8 +415,8 @@ void onIdriveStatusReceived(CANMessage frame)
 {
   if (frame.data[4] == 6)
   {
-    Serial.println("[iDRIVE] Controller ist nicht initialisiert.");
-    // Controller meldet er sei nicht initialisiert: Nachricht zum Initialisieren senden.
+    Serial.println("[iDRIVE] Controller rotation not initialized.");
+    // Controller told us that it hasn't been initialized. Send the message now to do just that:
     sendMessage(IDRIVE_CTRL_INIT_ADDR, 8, IDRIVE_CTRL_INIT);
     iDriveInitSuccess = false;
   }
@@ -400,183 +426,31 @@ void onIdriveStatusReceived(CANMessage frame)
   }
 }
 
-void onDoorStatusReceived(CANMessage frame)
-{
-        // 0000000 01010101 <- 
-      // Driver 
-      // Passenger
-      // Rear Driver
-      // Rear Passenger
-      if(bitRead(frame.data[1], 0) == 1)
-      {
-        driverDoorOpen = true;
-      }
-      else
-      {
-        driverDoorOpen = false;
-      }
-
-      if(bitRead(frame.data[1], 2) == 1)
-      {
-        passengerDoorOpen = true;
-      }
-      else
-      {
-        passengerDoorOpen = false;
-      }
-}
-
 void onIgnitionStatusReceived(CANMessage frame)
 {
-  // OFF: 00 00 3F
-  // ON: 064 064 127
-  if (frame.data[0] == 0x64 && frame.data[1] == 0x64 && frame.data[2] == 0x127)
+  if (frame.data[0] == 0x45 || frame.data[0] == 0x55)
   {
+    if (!ignitionOn)
+    {
+      FastLED.clear(true);
+      LedsEnabled = false;
+      digitalWrite(PIN_LED_PSU_ENABLE, HIGH);
+      Serial.println("Ignition or Engine is now ON");
+    }
+
     ignitionOn = true;
-    FastLED.clear(true);
-    Serial.println("Ignition is ON");
+
     return;
   }
 
-  ignitionOn = false;
-  Serial.println("Ignition is OFF");
-}
-
-// Messages are sent every second. Apparently the "Off" Message is for all indicators but has to be tested first.
-void onIndicatorStatusReceived(CANMessage frame)
-{
-  // Initial, ON, [...], OFF
-  // Indicators are set to OFF every 500ms after they have been triggered ON
-  // OFF Signal
-  if (frame.data[0] == 0x80)
+  if(frame.data[0] == 0x00 || frame.data[0] == 0x40 || frame.data[0] == 0x41)
   {
-    // Indicators OFF
-    Serial.println("Indicators OFF");
-    ActiveIndicator = Off;
-  }
-
-  // LEFT Turn Signal
-  if (frame.data[0] == 0x91)
-  {
-    IndicatorMillis = millis();
-    ActiveIndicator = Left;
-    // Initial Message
-    if (frame.data[1] == 0xF2)
+    
+    if (ignitionOn)
     {
-      // Initial Indicator Message
-      Serial.println("LEFT Indicator INITIAL");
+      ignitionOn = false;
+      Serial.println("Ignition or Engine is now OFF");
     }
-    // Message followed by 0xF2
-    if (frame.data[1] == 0xF1)
-    {
-      // Indicator Message
-      Serial.println("LEFT Indicator ON");
-    }
-  }
-
-  // RIGHT Turn Signal
-  if (frame.data[0] == 0xA1)
-  {
-    IndicatorMillis = millis();
-    ActiveIndicator = Right;
-    // Initial Message
-    if (frame.data[1] == 0xF2)
-    {
-      // Initial Indicator Message
-      Serial.println("RIGHT Indicator INITIAL");
-    }
-    // Message followed by 0xF2
-    if (frame.data[1] == 0xF1)
-    {
-      // Indicator Message
-      Serial.println("RIGHT Indicator ON");
-    }
-  }
-
-  // HAZARD Signal
-  if (frame.data[0] == 0xB1)
-  {
-    IndicatorMillis = millis();
-    ActiveIndicator = Hazard;
-    // Initial Message
-    if (frame.data[1] == 0xF2)
-    {
-      // Initial Indicator Message
-      Serial.println("HAZARD Indicator INITIAL");
-    }
-    // Message followed by 0xF2
-    if (frame.data[1] == 0xF1)
-    {
-      // Indicator Message
-      Serial.println("HAZARD Indicator ON");
-    }
-  }
-
-  showIndicator();
-}
-
-void showIndicator()
-{
-
-  switch (ActiveIndicator)
-  {
-  case Left:
-  {
-    fill_solid(Pixels[0], ledCount[0], IndicatorColor);
-    break;
-  }
-  case Right:
-  {
-    fill_solid(Pixels[1], ledCount[1], IndicatorColor);
-    break;
-  }
-  case Hazard:
-  {
-    fill_solid(Pixels[0], ledCount[0], IndicatorColor);
-    fill_solid(Pixels[1], ledCount[1], IndicatorColor);
-    break;
-  }
-  case Off:
-  {
-    FastLED.clear(true);
-    showDoorLighting();
-    break;
-  }
-
-  default:
-    break;
-  }
-  FastLED.show(true);
-}
-
-void onIndicatorStalkReceived(CANMessage frame)
-{
-
-  switch (frame.data[0])
-  {
-    // Indicator UP -> RIGHT Short
-  case 0x01:
-  {
-    break;
-  }
-    // Indicator UP -> RIGHT Permanent
-  case 0x02:
-  {
-    break;
-  }
-    // Indicator DOWN -> LEFT Short
-  case 0x03:
-  {
-    break;
-  }
-    // Indicator Down -> Left Permanent
-  case 0x04:
-  {
-    break;
-  }
-
-  default:
-    break;
   }
 }
 
@@ -598,25 +472,25 @@ void onCasCentralLockingReceived(CANMessage frame)
       {
         // Start the LED Show!
         LedsEnabled = true;
+        digitalWrite(PIN_LED_PSU_ENABLE, LOW);
         openButtonCounter = 0;
         Serial.println("LEDs enabled by Keyfob command.");
       }
       if (openButtonCounter == 1 && LedsEnabled)
       {
         // Switch to next effect
-        if (activeProfile < profileCount)
+        if (activeProfile < profileCount - 1)
         {
-          // Rather hacky way to increment an enum
-          activeProfile = profileList[activeProfile + 1];
+          activeProfile = Profiles(activeProfile + 1);
           openButtonCounter = 0;
           Serial.print("Switching to profile: ");
-          Serial.println(activeProfile);
+          Serial.println(profileNames[activeProfile]);
         }
         else
         {
-          activeProfile = profileList[0];
+          activeProfile = Profiles(0);
           Serial.print("End of Profiles. Switching to profile: ");
-          Serial.println(activeProfile);
+          Serial.println(profileNames[activeProfile]);
           FastLED.clear(true);
         }
       }
@@ -628,7 +502,7 @@ void onCasCentralLockingReceived(CANMessage frame)
       // LEDs ausschalten.
       FastLED.clear(true);
       LedsEnabled = false;
-      activeProfile = solid;
+      activeProfile = Profiles(0);
       Serial.println("Car Closed. LEDs disabled.");
     }
     // Kofferraum: Wird nur gesendet bei langem Druck auf die Taste
@@ -639,14 +513,6 @@ void ShowLedEffect()
 {
   switch (activeProfile)
   {
-  /* case car:
-  { 
-    TIMES_PER_SECOND(2)
-    {
-      showDoorLighting();
-    }
-    break;
-  } */
   case solid:
   {
     fill_solid(Pixels[0], ledCount[0], userColor);
@@ -678,30 +544,6 @@ void ShowLedEffect()
   }
   }
   FastLED.delay(1000 / updatesPerSecond);
-}
-
-void showDoorLighting()
-{
-      // Do Car Lighting Related Stuff.
-    if (driverDoorOpen)
-    {
-      DrawPixels(0,BackLeds+1,CenterLeds,CRGB::White);
-    }
-    else 
-    {
-      DrawPixels(0,BackLeds+1,CenterLeds,CRGB::Black);
-    }
-
-    if (passengerDoorOpen)
-    {
-      DrawPixels(1,BackLeds+1,CenterLeds,CRGB::White);
-    }
-    else
-    {
-      DrawPixels(1,BackLeds+1,CenterLeds,CRGB::Black);
-    }
-    
-    FastLED.show(brightness);
 }
 
 void meteorRain(CRGB ColorBackground, CRGB ColorMeteor, byte meteorSize, byte meteorTrailDecay, boolean meteorRandomDecay, int SpeedDelay)
@@ -737,7 +579,7 @@ void meteorRain(CRGB ColorBackground, CRGB ColorMeteor, byte meteorSize, byte me
   }
 }
 
-// Functions from Kriegsman example
+// Fades the current color to the target color by specified amount
 CRGB fadeTowardColor(CRGB &cur, const CRGB &target, uint8_t amount)
 {
   nblendU8TowardU8(cur.red, target.red, amount);
@@ -947,7 +789,7 @@ void RippleEffect()
   {
     for (int x = 0; x < STRIP_CHANNELS; x++)
     {
-
+      // The following commented block is kept for later use. It might be useful for anyone who whishes to swap in a random background
       /* if (currentBg == nextBg)
       {
           nextBg = random(256);
@@ -1001,6 +843,7 @@ void RippleEffect()
   }
 }
 
+// Wraps Pixels around 
 int wrap(int step, int channel)
 {
   if (step < 0)
@@ -1010,6 +853,7 @@ int wrap(int step, int channel)
   return step;
 }
 
+// Switches the color palette according to the selected profile.
 void setPalette()
 {
   switch (activeProfile)

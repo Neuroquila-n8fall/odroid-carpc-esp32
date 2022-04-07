@@ -8,8 +8,8 @@
 const int PIN_IGNITION_INPUT = GPIO_NUM_12;
 //Eingang Odroid Power Button. Wenn dieser HIGH ist, ist der Odroid aktiv.
 const int PIN_ODROID_POWER_INPUT = GPIO_NUM_16;
-//Ausgang Odroid Power Button
-const int PIN_ODROID_POWER_BUTTON = GPIO_NUM_27;
+//LED PSU Enable Pin. HIGH = OFF, LOW = ON
+const int PIN_LED_PSU_ENABLE = GPIO_NUM_27;
 //Power Button vom Display
 const int PIN_ODROID_DISPLAY_POWER_BUTTON = GPIO_NUM_15;
 //Pin für Display Helligkeit
