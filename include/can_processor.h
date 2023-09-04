@@ -2,12 +2,7 @@
 #define _CAN_PROCESSOR_H
 
 #include <Arduino.h>
-#include <settings.h>
-#include <pins.h>
-#include <k-can-addresses.h>
-#include <k-can-messages.h>
 #include <k-can.h>
-#include <idrive-controls.h>
 
 struct CANMessage {
     long unsigned int rxId;

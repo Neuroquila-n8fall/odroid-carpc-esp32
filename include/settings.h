@@ -4,7 +4,6 @@
 #include <Arduino.h>
 
 
-
 /*------------- Fields / Vars -------------*/
 //Zeitstempel für Sekundentimer
 extern unsigned long previousOneSecondTick;
