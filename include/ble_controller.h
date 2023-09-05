@@ -13,7 +13,7 @@ static const char* SERVICE_UUID = "5c301cef-8ff1-4a9a-91be-f2aba0dd35d2";
 class BLEController {
 public:
     BLEController();
-    void init();
+    void init(char *deviceName, int pin);
     void handleClient();
     static bool isDeviceConnected();
     static bool wasDeviceConnected();
@@ -40,7 +40,8 @@ private:
     static bool deviceConnected;
     static bool oldDeviceConnected;
     static bool devicePaired;
-
+    static char advertisedName[16];
+    static int securityPin;
     static void onConnect(BLEServer* pServer);
     static void onDisconnect(BLEServer* pServer);
 };

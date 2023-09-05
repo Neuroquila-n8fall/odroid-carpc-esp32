@@ -3,38 +3,17 @@
 
 #include <Arduino.h>
 #include <FastLED.h>
+#include <settings.h>
 
-// Strip Channel 1
-const int CHANNEL_1_PIN = 25;
 
-// Strip Channel 2
-const int CHANNEL_2_PIN = 26;
-
-// Strip Channel 3
-const int CHANNEL_3_PIN = 14;
-
-const int STRIP_CHANNELS = 2;
-const int MAX_PIXELS_PER_STRIP = 2048;
 
 // Pixels
 extern CRGB Pixels[STRIP_CHANNELS][MAX_PIXELS_PER_STRIP];
 
-// Led Count per strip
-// Back: 22
-// Center: 103
-// Front: 24
-extern int ledCount[STRIP_CHANNELS];
-const int BackLeds = 22;
-const int CenterLeds = 103;
-const int FrontLeds = 24;
-
-extern int updatesPerSecond;
-extern byte brightness;
-extern byte color_red;
-extern byte color_green;
-extern byte color_blue;
-
+// Active Color Palette
 extern CRGBPalette16 currentPalette;
+
+// Active Blending Type
 extern TBlendType currentBlending;
 
 // Profiles Enum

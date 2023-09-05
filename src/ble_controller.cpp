@@ -4,17 +4,21 @@
 bool BLEController::deviceConnected = false;
 bool BLEController::oldDeviceConnected = false;
 bool BLEController::devicePaired = false;
+char BLEController::advertisedName[16];
+int BLEController::securityPin = 123456;
 
 BLEController::BLEController()
 {
-    // Constructor code if needed
 }
 
-void BLEController::init()
+void BLEController::init(char *deviceName, int pin)
 {
-    BLEDevice::init("ESP32_LED_Controller");
+    strcpy(advertisedName, deviceName);
+    securityPin = pin;
+
+    BLEDevice::init(advertisedName);
     pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new BLEServerCallbacks());
+    pServer->setCallbacks(new BLEServerCallbacks());  
 
     BLEService *pService = pServer->createService(SERVICE_UUID); // Assuming you've defined SERVICE_UUID
     // Create a BLE Characteristic for exchanging JSON payloads
@@ -58,11 +62,12 @@ void BLEController::onConnect(BLEServer *pServer)
 void BLEController::onDisconnect(BLEServer *pServer)
 {
     deviceConnected = false;
+    pServer->getAdvertising()->start();    
 }
 
 uint32_t BLEController::MySecurityCallbacks::onPassKeyRequest()
 {
-    return 123456; // You can set your own passkey here
+    return securityPin; // You can set your own passkey here
 }
 
 void BLEController::MySecurityCallbacks::onPassKeyNotify(uint32_t pass_key)

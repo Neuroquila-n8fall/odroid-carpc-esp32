@@ -9,20 +9,8 @@
 // LED Related Fields
 // ---------------------------------------
 
-// Led Count per strip
-
-int ledCount[STRIP_CHANNELS] = {149, 149};
-
 CRGB Pixels[STRIP_CHANNELS][MAX_PIXELS_PER_STRIP];
 Profiles activeProfile = solid;
-
-int updatesPerSecond = 60;
-byte brightness = 255;
-byte color_red = 255;
-byte color_green = 255;
-byte color_blue = 255;
-
-CRGB userColor = CRGB(255, 0, 0);
 
 CRGBPalette16 currentPalette;
 TBlendType currentBlending;

@@ -5,7 +5,6 @@
 #include <main.h>
 
 #include <ESP32CAN.h>
-#include "driver/adc.h"
 #include <CAN_config.h>
 #include "FastLED.h"
 #include <PaletteEffects.h>
@@ -18,6 +17,8 @@
 #include <ble_controller.h>
 #include <settings.h>
 #include <led-control.h>
+
+#include <nvs_flash.h>
 
 bool ignitionOn = false;
 
@@ -48,6 +49,10 @@ bool LedsEnabled = false;
 
 BLEController bleController;
 
+unsigned long currentMillis = 0L;
+
+bool configurationResetRequested = false;
+
 void setup()
 {
   delay(1000);
@@ -56,14 +61,58 @@ void setup()
   pinMode(LED_BUILTIN, OUTPUT);     // LED
   pinMode(PIN_DEBUG, INPUT_PULLUP); // Debug Switch Pin
 
+  #pragma region Startup Interrupt
+
+  unsigned long curmils = millis();
+
+  while (millis() - curmils <= 3000)
+  {
+
+    // Blink LED to indicate reset time window
+    EVERY_N_MILLISECONDS(500)
+    {
+      digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    }
+
+    //Check GPIO0 for presses which triggers the configuration reset process
+    configurationResetRequested = !digitalRead(GPIO_NUM_0);
+
+    if (configurationResetRequested)
+    {
+      break;
+    }
+    
+  }
+
+  //Perform Reset Actions
+  if (configurationResetRequested)
+  {
+    Serial.println("[Setup] Configuration Reset Requested. Resetting Configuration...");
+
+    // Erase the NVS partition
+    nvs_flash_erase();
+
+    // Initialize the NVS partition again
+    nvs_flash_init();
+
+    Serial.println("[Setup] Configuration Reset Complete. Rebooting...");
+
+    // Reset the ESP32
+    esp_restart();
+  }
+  
+  
+
+  #pragma endregion
+
   // Read LED Settings from NVRAM
   readLedProfile();
 
-  hibernateActive = false;
+  // Read LED Brightness from NVRAM
+  readLedBrightness();
 
-  // Disable ADC, save energy
-  // adc_power_release();
-  // setCpuFrequencyMhz(80);
+  // Read LED Color from NVRAM
+  readLedColor();
 
   // Setup CAN Module. Es ist nicht notwendig auf den Bus zu warten
   if (setupCan())
@@ -78,8 +127,13 @@ void setup()
 
   Serial.println("[Setup] Ready.");
 
+  // Read Device Name from NVRAM
+  readDeviceName();
+  // Read Security Pin from NVRAM
+  readSecurityPin();
+
   // Start BLE Controller
-  bleController.init();
+  bleController.init(deviceName, securityPin);
 }
 
 void loop()
@@ -105,7 +159,6 @@ void loop()
     }
 
     digitalWrite(LED_BUILTIN, ledState);
-    previousOneSecondTick = currentMillis;
   }
 
   // If a device was connected but has now disconnected, restart advertising
@@ -135,12 +188,6 @@ void processCanMessages()
 
     previousCanMsgTimestamp = currentMillis;
     canbusEnabled = true;
-
-    // Normalbetrieb
-    if (hibernateActive)
-    {
-      // exitPowerSaving();
-    }
 
     uint32_t canId = frame.rxId;
 
@@ -187,20 +234,6 @@ void processCanMessages()
     Serial.println("[checkCan] Keine Nachrichten seit 30 Sekunden. Der Bus wird nun als deaktiviert betrachtet.");
     // enterPowerSaving();
   }
-}
-
-void enterPowerSaving()
-{
-  Serial.println("[Power] Entering power saving...");
-  setCpuFrequencyMhz(80);
-  hibernateActive = true;
-}
-
-void exitPowerSaving()
-{
-  Serial.println("[Power] Exiting power saving mode...");
-  setCpuFrequencyMhz(240);
-  hibernateActive = false;
 }
 
 void printCanMsg(int canId, unsigned char *buffer, int len)

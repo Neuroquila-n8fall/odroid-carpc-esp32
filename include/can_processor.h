@@ -10,11 +10,6 @@ struct CANMessage {
     unsigned char data[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 } frame;
 
-//——————————————————————————————————————————————————————————————————————————————
-//  MCP2515 Driver object
-//——————————————————————————————————————————————————————————————————————————————
-
-
 //CAN Nachrichten auf der Konsole ausgeben
 extern void printCanMsg(int canId, unsigned char *buffer, int len);
 //CAN Output als CSV
@@ -31,10 +26,5 @@ extern void onIdriveStatusReceived(CANMessage frame);
 extern void onIdriveRotaryMovement(CANMessage frame);
 //Process messages sent by the button encoder of the iDrive controller
 extern void onIdriveButtonPressed(CANMessage frame);
-
-//——————————————————————————————————————————————————————————————————————————————
-//  MCP2515 Quartz: adapt to your design
-//——————————————————————————————————————————————————————————————————————————————
-static const uint32_t QUARTZ_FREQUENCY = 16UL * 1000UL * 1000UL; // 16 MHz
 
 #endif

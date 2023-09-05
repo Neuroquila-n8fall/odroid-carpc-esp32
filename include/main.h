@@ -11,12 +11,10 @@
 extern void readConsole();
 // CAN Nachricht senden.
 extern bool sendMessage(int address, byte len, const uint8_t *buf);
-// Power Saver
-extern void enterPowerSaving();
-// Exit Power Saving
-extern void exitPowerSaving();
 // Returns if any pending actions are queued
 extern bool anyPendingActions();
+// Request for configuration reset
+extern bool configurationResetRequested;
 
 extern void onIgnitionStatusReceived(CANMessage frame);
 extern void onIndicatorStatusReceived(CANMessage frame);
