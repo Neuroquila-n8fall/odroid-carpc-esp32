@@ -6,6 +6,7 @@ bool BLEController::oldDeviceConnected = false;
 bool BLEController::devicePaired = false;
 char BLEController::advertisedName[16];
 int BLEController::securityPin = 123456;
+DynamicJsonDocument BLEController::responseDoc(128);
 
 BLEController::BLEController()
 {
@@ -20,15 +21,25 @@ void BLEController::init(char *deviceName, int pin)
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new BLEServerCallbacks());  
 
-    BLEService *pService = pServer->createService(SERVICE_UUID); // Assuming you've defined SERVICE_UUID
-    // Create a BLE Characteristic for exchanging JSON payloads
-    pCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID,
-        BLECharacteristic::PROPERTY_READ |
-            BLECharacteristic::PROPERTY_WRITE |
-            BLECharacteristic::PROPERTY_NOTIFY);
+    BLEService *pService = pServer->createService(SERVICE_UUID); 
+    // Create a BLE Characteristic for sending commands from the app to the ESP32
+    BLECharacteristic *pCommandCharacteristic = pService->createCharacteristic(
+        WRITE_CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_WRITE);
 
-    pCharacteristic->setCallbacks(new BLECharacteristicCallbacks());
+    // Create a BLE Characteristic for the app to read data from the ESP32
+    BLECharacteristic *pDataCharacteristic = pService->createCharacteristic(
+        READ_CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+
+    // Create a BLE Characteristic for the ESP32 to provide feedback about the last command
+    BLECharacteristic *pStatusCharacteristic = pService->createCharacteristic(
+        STATUS_CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+
+    pStatusCharacteristic->setCallbacks(new StatusCharacteristicCallbacks());
+    pReadCharacteristic->setCallbacks(new SettingsCharacteristicCallbacks());
+    pWriteCharacteristic->setCallbacks(new SettingsCharacteristicCallbacks());
     pService->start();
 
     BLESecurity *pSecurity = new BLESecurity();
@@ -95,20 +106,115 @@ void BLEController::MySecurityCallbacks::onAuthenticationComplete(esp_ble_auth_c
 
 void BLEController::SettingsCharacteristicCallbacks::onRead(BLECharacteristic *pCharacteristic)
 {
-    DynamicJsonDocument doc(512); // Create a JSON document. Adjust the size if needed.
+    // Create a JSON object to hold the preferences
+    DynamicJsonDocument doc(1024);
 
-    doc["profile"] = static_cast<int>(activeProfile);
-
+    // Populate the JSON object with preferences
+    doc["deviceName"] = deviceName;
+    doc["securityPin"] = securityPin;
+    doc["activeProfile"] = static_cast<int>(activeProfile);
     doc["brightness"] = brightness;
-    JsonObject color = doc.createNestedObject("color");
+    doc["color_red"] = color_red;
+    doc["color_green"] = color_green;
+    doc["color_blue"] = color_blue;
+    doc["backLeds"] = backLeds;
+    doc["centerLeds"] = centerLeds;
+    doc["frontLeds"] = frontLeds;
+    doc["updatesPerSecond"] = updatesPerSecond;
 
-    color["r"] = color_red;
-    color["g"] = color_green;
-    color["b"] = color_blue;
+    // Convert the JSON object to a string
+    String jsonString;
+    serializeJson(doc, jsonString);
 
-    std::string response;
-    serializeJson(doc, response);
-    pCharacteristic->setValue(response);
+    // Set the characteristic value to the JSON string
+    pCharacteristic->setValue(jsonString.c_str());
+}
+
+void BLEController::SettingsCharacteristicCallbacks::onWrite(BLECharacteristic *pCharacteristic) {
+    // Get the written value (JSON string)
+    std::string value = pCharacteristic->getValue();
+
+    // Parse the JSON string
+    DynamicJsonDocument doc(1024);
+    deserializeJson(doc, value.c_str());
+
+    // Update the preferences based on the received JSON
+    if (doc.containsKey("deviceName")) {
+        strncpy(deviceName, doc["deviceName"], sizeof(deviceName));
+    }
+
+    if (doc.containsKey("securityPin")) {
+        securityPin = doc["securityPin"];
+    }
+
+    if (doc.containsKey("activeProfile")) {
+        activeProfile = static_cast<Profiles>(doc["activeProfile"].as<int>());
+    }
+
+    if (doc.containsKey("brightness")) {
+        brightness = doc["brightness"];
+    }
+
+    if (doc.containsKey("color_red")) {
+        color_red = doc["color_red"];
+    }
+
+    if (doc.containsKey("color_green")) {
+        color_green = doc["color_green"];
+    }
+
+    if (doc.containsKey("color_blue")) {
+        color_blue = doc["color_blue"];
+    }
+
+    if (doc.containsKey("backLeds")) {
+        backLeds = doc["backLeds"];
+    }
+
+    if (doc.containsKey("centerLeds")) {
+        centerLeds = doc["centerLeds"];
+    }
+
+    if (doc.containsKey("frontLeds")) {
+        frontLeds = doc["frontLeds"];
+    }
+
+    if (doc.containsKey("updatesPerSecond")) {
+        updatesPerSecond = doc["updatesPerSecond"];
+    }
+
+    // Update the userColor based on the new RGB values
+    userColor = CRGB(color_red, color_green, color_blue);
+
+    // Write the preferences to the storage
+    writeLedProfile();
+    writeLedBrightness();
+    writeLedColor();
+    writeLedCount();
+    writeUpdatesPerSecond();
+    writeSecurityPin();
+    writeDeviceName();
+
+    DynamicJsonDocument responseDoc(128);
+
+    // Restart the ESP if the reboot flag is set
+    if (doc.containsKey("reboot"))
+    {
+        ESP.restart();
+    }
+
+    // If we are not rebooting, then we will send an OK response so the app knows the controller received the message
+    responseDoc["success"] = true;
+}
+
+void BLEController::StatusCharacteristicCallbacks::onRead(BLECharacteristic *pCharacteristic)
+{
+    // Convert the JSON object to a string
+    String jsonString;
+    serializeJson(responseDoc, jsonString);
+
+    // Set the characteristic value to the JSON string
+    pCharacteristic->setValue(jsonString.c_str());
 }
 
 bool BLEController::isDeviceConnected() {
