@@ -19,9 +19,9 @@ void BLEController::init(char *deviceName, int pin)
 
     BLEDevice::init(advertisedName);
     pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new BLEServerCallbacks());  
+    pServer->setCallbacks(new BLEServerCallbacks());
 
-    BLEService *pService = pServer->createService(SERVICE_UUID); 
+    BLEService *pService = pServer->createService(SERVICE_UUID);
     // Create a BLE Characteristic for sending commands from the app to the ESP32
     BLECharacteristic *pCommandCharacteristic = pService->createCharacteristic(
         WRITE_CHARACTERISTIC_UUID,
@@ -73,7 +73,7 @@ void BLEController::onConnect(BLEServer *pServer)
 void BLEController::onDisconnect(BLEServer *pServer)
 {
     deviceConnected = false;
-    pServer->getAdvertising()->start();    
+    pServer->getAdvertising()->start();
 }
 
 uint32_t BLEController::MySecurityCallbacks::onPassKeyRequest()
@@ -130,7 +130,8 @@ void BLEController::SettingsCharacteristicCallbacks::onRead(BLECharacteristic *p
     pCharacteristic->setValue(jsonString.c_str());
 }
 
-void BLEController::SettingsCharacteristicCallbacks::onWrite(BLECharacteristic *pCharacteristic) {
+void BLEController::SettingsCharacteristicCallbacks::onWrite(BLECharacteristic *pCharacteristic)
+{
     // Get the written value (JSON string)
     std::string value = pCharacteristic->getValue();
 
@@ -139,47 +140,58 @@ void BLEController::SettingsCharacteristicCallbacks::onWrite(BLECharacteristic *
     deserializeJson(doc, value.c_str());
 
     // Update the preferences based on the received JSON
-    if (doc.containsKey("deviceName")) {
+    if (doc.containsKey("deviceName"))
+    {
         strncpy(deviceName, doc["deviceName"], sizeof(deviceName));
     }
 
-    if (doc.containsKey("securityPin")) {
+    if (doc.containsKey("securityPin"))
+    {
         securityPin = doc["securityPin"];
     }
 
-    if (doc.containsKey("activeProfile")) {
+    if (doc.containsKey("activeProfile"))
+    {
         activeProfile = static_cast<Profiles>(doc["activeProfile"].as<int>());
     }
 
-    if (doc.containsKey("brightness")) {
+    if (doc.containsKey("brightness"))
+    {
         brightness = doc["brightness"];
     }
 
-    if (doc.containsKey("color_red")) {
+    if (doc.containsKey("color_red"))
+    {
         color_red = doc["color_red"];
     }
 
-    if (doc.containsKey("color_green")) {
+    if (doc.containsKey("color_green"))
+    {
         color_green = doc["color_green"];
     }
 
-    if (doc.containsKey("color_blue")) {
+    if (doc.containsKey("color_blue"))
+    {
         color_blue = doc["color_blue"];
     }
 
-    if (doc.containsKey("backLeds")) {
+    if (doc.containsKey("backLeds"))
+    {
         backLeds = doc["backLeds"];
     }
 
-    if (doc.containsKey("centerLeds")) {
+    if (doc.containsKey("centerLeds"))
+    {
         centerLeds = doc["centerLeds"];
     }
 
-    if (doc.containsKey("frontLeds")) {
+    if (doc.containsKey("frontLeds"))
+    {
         frontLeds = doc["frontLeds"];
     }
 
-    if (doc.containsKey("updatesPerSecond")) {
+    if (doc.containsKey("updatesPerSecond"))
+    {
         updatesPerSecond = doc["updatesPerSecond"];
     }
 
@@ -217,15 +229,17 @@ void BLEController::StatusCharacteristicCallbacks::onRead(BLECharacteristic *pCh
     pCharacteristic->setValue(jsonString.c_str());
 }
 
-bool BLEController::isDeviceConnected() {
+bool BLEController::isDeviceConnected()
+{
     return deviceConnected;
 }
 
-bool BLEController::wasDeviceConnected() {
+bool BLEController::wasDeviceConnected()
+{
     return oldDeviceConnected;
 }
 
-void BLEController::setOldDeviceConnected(bool status) {
+void BLEController::setOldDeviceConnected(bool status)
+{
     oldDeviceConnected = status;
 }
-
