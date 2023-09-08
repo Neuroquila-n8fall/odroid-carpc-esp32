@@ -19,7 +19,7 @@ void BLEController::init(char *deviceName, int pin)
 
     BLEDevice::init(advertisedName);
     pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new BLEServerCallbacks());
+    pServer->setCallbacks(new MyBleCallbacks());
 
     BLEService *pService = pServer->createService(SERVICE_UUID);
     // Create a BLE Characteristic for sending commands from the app to the ESP32
@@ -37,15 +37,22 @@ void BLEController::init(char *deviceName, int pin)
         STATUS_CHARACTERISTIC_UUID,
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
 
-    pStatusCharacteristic->setCallbacks(new StatusCharacteristicCallbacks());
-    pReadCharacteristic->setCallbacks(new SettingsCharacteristicCallbacks());
-    pWriteCharacteristic->setCallbacks(new SettingsCharacteristicCallbacks());
-    pService->start();
+    // Require pairing for characteristics
+    pCommandCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
+    pDataCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
+    pStatusCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
 
+    // Set the characteristic callbacks
+    pStatusCharacteristic->setCallbacks(new StatusCharacteristicCallbacks());
+    pDataCharacteristic->setCallbacks(new SettingsCharacteristicCallbacks());
+    pCommandCharacteristic->setCallbacks(new SettingsCharacteristicCallbacks());
+
+    // Set up security
     BLESecurity *pSecurity = new BLESecurity();
-    pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND);
-    pSecurity->setCapability(ESP_IO_CAP_NONE);
+    pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM_BOND);    
+    pSecurity->setCapability(ESP_IO_CAP_KBDISP);
     pSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+    pSecurity->setStaticPIN(securityPin);
     BLEDevice::setSecurityCallbacks(new MySecurityCallbacks());
 
     // Start the service
@@ -60,25 +67,35 @@ void BLEController::init(char *deviceName, int pin)
     BLEDevice::startAdvertising();
 }
 
-void BLEController::onConnect(BLEServer *pServer)
+void BLEController::handleClient()
 {
-    if (devicePaired)
-    {
-        pServer->disconnect(pServer->getConnId()); // Disconnect if a device is already paired
-        return;
+    if (deviceConnected) {
+        // Save the current connection state
+        oldDeviceConnected = deviceConnected;
     }
+
+    // If no device is currently connected and the previous state was connected, start advertising
+    if (!deviceConnected && oldDeviceConnected) {
+        delay(500);  // Optional delay to give BLE stack some time
+        BLEDevice::startAdvertising();
+        Serial.println("Restarting advertising...");
+        oldDeviceConnected = deviceConnected;
+    }
+}
+
+void BLEController::MyBleCallbacks::onConnect(BLEServer *pServer)
+{
     deviceConnected = true;
 }
 
-void BLEController::onDisconnect(BLEServer *pServer)
+void BLEController::MyBleCallbacks::onDisconnect(BLEServer *pServer)
 {
     deviceConnected = false;
-    pServer->getAdvertising()->start();
 }
 
 uint32_t BLEController::MySecurityCallbacks::onPassKeyRequest()
 {
-    return securityPin; // You can set your own passkey here
+    return securityPin;
 }
 
 void BLEController::MySecurityCallbacks::onPassKeyNotify(uint32_t pass_key)
@@ -88,7 +105,7 @@ void BLEController::MySecurityCallbacks::onPassKeyNotify(uint32_t pass_key)
 
 bool BLEController::MySecurityCallbacks::onConfirmPIN(uint32_t pass_key)
 {
-    return false; // For now, we won't use PIN confirmation
+    return securityPin == pass_key; 
 }
 
 bool BLEController::MySecurityCallbacks::onSecurityRequest()
@@ -100,7 +117,8 @@ void BLEController::MySecurityCallbacks::onAuthenticationComplete(esp_ble_auth_c
 {
     if (cmpl.success)
     {
-        devicePaired = true;
+        devicePaired = true;            
+        BLEDevice::stopAdvertising();
     }
 }
 
@@ -117,6 +135,7 @@ void BLEController::SettingsCharacteristicCallbacks::onRead(BLECharacteristic *p
     doc["color_red"] = color_red;
     doc["color_green"] = color_green;
     doc["color_blue"] = color_blue;
+    doc["ledCount"] = ledCount[0];    
     doc["backLeds"] = backLeds;
     doc["centerLeds"] = centerLeds;
     doc["frontLeds"] = frontLeds;
@@ -133,7 +152,7 @@ void BLEController::SettingsCharacteristicCallbacks::onRead(BLECharacteristic *p
 void BLEController::SettingsCharacteristicCallbacks::onWrite(BLECharacteristic *pCharacteristic)
 {
     // Get the written value (JSON string)
-    std::string value = pCharacteristic->getValue();
+    String value = pCharacteristic->getValue().c_str();
 
     // Parse the JSON string
     DynamicJsonDocument doc(1024);
@@ -173,6 +192,12 @@ void BLEController::SettingsCharacteristicCallbacks::onWrite(BLECharacteristic *
     if (doc.containsKey("color_blue"))
     {
         color_blue = doc["color_blue"];
+    }
+
+    if(doc.containsKey("ledCount"))
+    {
+        ledCount[0] = doc["ledCount"][0];
+        ledCount[1] = doc["ledCount"][1];
     }
 
     if (doc.containsKey("backLeds"))
