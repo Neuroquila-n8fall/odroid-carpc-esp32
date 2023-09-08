@@ -6,6 +6,11 @@
 
 /*------------- Fields / Vars -------------*/
 
+// First Boot Flag
+extern bool firstBoot;
+
+extern bool canEnabled;
+
 extern char deviceName[16];
 extern int securityPin;
 

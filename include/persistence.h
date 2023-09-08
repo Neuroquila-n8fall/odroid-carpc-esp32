@@ -5,6 +5,10 @@
 
 
 extern Preferences preferences;
+
+extern void readFirstBoot();
+extern void writeFirstBoot();
+
 extern void readLedProfile();
 extern void writeLedProfile();
 

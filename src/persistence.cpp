@@ -5,17 +5,34 @@
 
 Preferences preferences;
 
+void readFirstBoot()
+{
+    preferences.begin("Settings", false);
+    firstBoot = preferences.getBool("firstBoot", true);
+    preferences.end();
+}
+
+void writeFirstBoot()
+{
+    preferences.begin("Settings", false);
+    preferences.putBool("firstBoot", firstBoot);
+    preferences.end();
+}
+
 // General Controller Settings
 
 // Controller Name / BLE Adverstised Name
 void readDeviceName() {
-    preferences.begin("deviceName", true); // Open in read-only mode
-    preferences.getString("deviceName", deviceName, 16);
+    String devName;
+    preferences.begin("Settings", false);
+    devName = preferences.getString("deviceName", "FX-Underglow");
+    strcpy(deviceName, devName.c_str());
     preferences.end();
 }
 
 void writeDeviceName() {
-    preferences.begin("deviceName", false);
+    Serial.println("Writing Device Name");
+    preferences.begin("Settings", false);
     preferences.putString("deviceName", deviceName);
     preferences.end();
 }
@@ -23,13 +40,13 @@ void writeDeviceName() {
 // BLE Security Pin
 
 void readSecurityPin() {
-    preferences.begin("securityPin", true);
+    preferences.begin("Settings", false);
     securityPin = preferences.getInt("securityPin", 0);
     preferences.end();
 }
 
 void writeSecurityPin() {
-    preferences.begin("securityPin", false);
+    preferences.begin("Settings", false);
     preferences.putInt("securityPin", securityPin);
     preferences.end();
 }
@@ -38,14 +55,14 @@ void writeSecurityPin() {
 
 //Active Profile
 void readLedProfile() {
-    preferences.begin("activeProfile", true); // Open in read-only mode
+    preferences.begin("Settings", false); 
     int32_t storedProfile = preferences.getInt("activeProfile", 0);
     activeProfile = static_cast<Profiles>(storedProfile);
     preferences.end();
 }
 
 void writeLedProfile() {
-    preferences.begin("activeProfile", false);
+    preferences.begin("Settings", false);
     preferences.putInt("activeProfile", activeProfile);
     preferences.end();
 }
@@ -53,12 +70,12 @@ void writeLedProfile() {
 //LED Brightness
 
 void readLedBrightness() {
-    preferences.begin("ledBrightness", true);
+    preferences.begin("Settings", false);
     brightness = preferences.getInt("ledBrightness", 0);
 }
 
 void writeLedBrightness() {
-    preferences.begin("ledBrightness", false);
+    preferences.begin("Settings", false);
     preferences.putInt("ledBrightness", brightness);
     preferences.end();
 }
@@ -66,7 +83,7 @@ void writeLedBrightness() {
 //Single LED Color
 
 void readLedColor() {
-    preferences.begin("ledColor", true);
+    preferences.begin("Settings", false);
     color_red = preferences.getUChar("ledColor_red", 128);
     color_green = preferences.getUChar("ledColor_green", 128);
     color_blue = preferences.getUChar("ledColor_blue", 128);
@@ -75,7 +92,7 @@ void readLedColor() {
 }
 
 void writeLedColor() {
-    preferences.begin("ledColor", false);
+    preferences.begin("Settings", false);
     preferences.putUChar("ledColor_red", color_red);
     preferences.putUChar("ledColor_green", color_green);
     preferences.putUChar("ledColor_blue", color_blue);
@@ -84,7 +101,7 @@ void writeLedColor() {
 
 // LED Count per strip (Back, Center, Front)
 void readLedCount() {
-    preferences.begin("ledCount", true);
+    preferences.begin("Settings", false);
     backLeds = preferences.getInt("ledCount_back", 20);
     centerLeds = preferences.getInt("ledCount_center", 100);
     frontLeds = preferences.getInt("ledCount_front", 20);
@@ -93,7 +110,7 @@ void readLedCount() {
 }
 
 void writeLedCount() {
-    preferences.begin("ledCount", false);
+    preferences.begin("Settings", false);
     preferences.putInt("ledCount_back", backLeds);
     preferences.putInt("ledCount_center", centerLeds);
     preferences.putInt("ledCount_front", frontLeds);
@@ -108,14 +125,14 @@ void updateLedChannels() {
 
 // Updates per second
 void readUpdatesPerSecond() {
-    preferences.begin("updatesPerSecond", true);
-    updatesPerSecond = preferences.getInt("updatesPerSecond", 0);
+    preferences.begin("Settings", false);
+    updatesPerSecond = preferences.getInt("updatesPerSec", 0);
     preferences.end();
 }
 
 void writeUpdatesPerSecond() {
-    preferences.begin("updatesPerSecond", false);
-    preferences.putInt("updatesPerSecond", updatesPerSecond);
+    preferences.begin("Settings", false);
+    preferences.putInt("updatesPerSec", updatesPerSecond);
     preferences.end();
 }
 

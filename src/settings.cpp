@@ -1,6 +1,12 @@
 #include <settings.h>
 
 /*------------- Fields / Vars -------------*/
+
+// First Boot Flag
+bool firstBoot = true;
+
+bool canEnabled = true;
+
 //Zeitstempel für Sekundentimer
 unsigned long previousOneSecondTick = 0;
 

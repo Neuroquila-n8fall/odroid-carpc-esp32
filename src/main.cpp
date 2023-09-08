@@ -55,8 +55,32 @@ bool configurationResetRequested = false;
 
 void setup()
 {
+
+  // CAN Enable
+  canEnabled = true;
+
   delay(1000);
   Serial.begin(serialBaud);
+
+  Serial.println("Checking for first boot...");
+  readFirstBoot();
+  if (firstBoot)
+  {
+    Serial.println("First boot detected. Writing default settings...");
+    writeDeviceName();
+    writeSecurityPin();
+    writeLedProfile();
+    writeLedBrightness();
+    writeLedColor();
+    writeLedCount();
+    writeUpdatesPerSecond();
+
+    Serial.println("Device Name written.");
+    Serial.println("Setting first boot flag to false");
+    firstBoot = false;
+    writeFirstBoot();
+  }
+  
 
   pinMode(LED_BUILTIN, OUTPUT);     // LED
   pinMode(PIN_DEBUG, INPUT_PULLUP); // Debug Switch Pin
@@ -65,6 +89,7 @@ void setup()
 
   unsigned long curmils = millis();
 
+  Serial.println("[Setup] Waiting for 3 seconds to check for configuration reset...");
   while (millis() - curmils <= 3000)
   {
 
@@ -129,8 +154,24 @@ void setup()
 
   // Read Device Name from NVRAM
   readDeviceName();
+  Serial.println("[Setup] Device Name: " + String(deviceName));
   // Read Security Pin from NVRAM
   readSecurityPin();
+  Serial.println("[Setup] Security Pin: " + String(securityPin));
+
+  // Read and output the Bluetooth Device Address
+  uint8_t mac[6];
+  esp_read_mac(mac, ESP_MAC_BT);
+  Serial.print("[Setup] Bluetooth Device Address: ");
+  //Iterate through the mac address array and print each element
+  for (int i = 0; i < sizeof(mac); i++)
+  {
+    Serial.print(mac[i], HEX);
+    if (i < sizeof(mac) - 1)
+    {
+      Serial.print(":");
+    }
+  }
 
   // Start BLE Controller
   bleController.init(deviceName, securityPin);
@@ -145,7 +186,11 @@ void loop()
   }
 
   // CAN Nachrichten verarbeiten
-  processCanMessages();
+  if (canEnabled)
+  {
+    processCanMessages();
+  }
+  
   EVERY_N_SECONDS(1)
   {
     // Heartbeat
@@ -161,13 +206,7 @@ void loop()
     digitalWrite(LED_BUILTIN, ledState);
   }
 
-  // If a device was connected but has now disconnected, restart advertising
-  if (bleController.isDeviceConnected() && !bleController.wasDeviceConnected())
-  {
-    delay(500); // Give it a short delay
-    BLEDevice::startAdvertising();
-  }
-  bleController.setOldDeviceConnected(bleController.isDeviceConnected());
+  bleController.handleClient();
 }
 
 void processCanMessages()
