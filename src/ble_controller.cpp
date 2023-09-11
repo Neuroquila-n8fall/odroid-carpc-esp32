@@ -38,9 +38,9 @@ void BLEController::init(char *deviceName, int pin)
         BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
 
     // Require pairing for characteristics
-    pCommandCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
-    pDataCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
-    pStatusCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
+    pCommandCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENC_MITM | ESP_GATT_PERM_WRITE_ENC_MITM);
+    pDataCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENC_MITM | ESP_GATT_PERM_WRITE_ENC_MITM);
+    pStatusCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENC_MITM | ESP_GATT_PERM_WRITE_ENC_MITM);
 
     // Set the characteristic callbacks
     pStatusCharacteristic->setCallbacks(new StatusCharacteristicCallbacks());
@@ -128,18 +128,18 @@ void BLEController::SettingsCharacteristicCallbacks::onRead(BLECharacteristic *p
     DynamicJsonDocument doc(1024);
 
     // Populate the JSON object with preferences
-    doc["deviceName"] = deviceName;
-    doc["securityPin"] = securityPin;
-    doc["activeProfile"] = static_cast<int>(activeProfile);
-    doc["brightness"] = brightness;
-    doc["color_red"] = color_red;
-    doc["color_green"] = color_green;
-    doc["color_blue"] = color_blue;
-    doc["ledCount"] = ledCount[0];    
-    doc["backLeds"] = backLeds;
-    doc["centerLeds"] = centerLeds;
-    doc["frontLeds"] = frontLeds;
-    doc["updatesPerSecond"] = updatesPerSecond;
+    doc["DeviceName"] = deviceName;
+    doc["SecurityPin"] = securityPin;
+    doc["ActiveProfile"] = static_cast<int>(activeProfile);
+    doc["Brightness"] = brightness;
+    doc["ColorRed"] = color_red;
+    doc["ColorGreen"] = color_green;
+    doc["ColorBlue"] = color_blue;
+    doc["LedCount"] = ledCount[0];    
+    doc["BackLeds"] = backLeds;
+    doc["CenterLeds"] = centerLeds;
+    doc["FrontLeds"] = frontLeds;
+    doc["UpdatesPerSecond"] = updatesPerSecond;
 
     // Convert the JSON object to a string
     String jsonString;
@@ -159,65 +159,65 @@ void BLEController::SettingsCharacteristicCallbacks::onWrite(BLECharacteristic *
     deserializeJson(doc, value.c_str());
 
     // Update the preferences based on the received JSON
-    if (doc.containsKey("deviceName"))
+    if (doc.containsKey("DeviceName"))
     {
-        strncpy(deviceName, doc["deviceName"], sizeof(deviceName));
+        strncpy(deviceName, doc["DeviceName"], sizeof(deviceName));
     }
 
-    if (doc.containsKey("securityPin"))
+    if (doc.containsKey("SecurityPin"))
     {
-        securityPin = doc["securityPin"];
+        securityPin = doc["SecurityPin"];
     }
 
-    if (doc.containsKey("activeProfile"))
+    if (doc.containsKey("ActiveProfile"))
     {
-        activeProfile = static_cast<Profiles>(doc["activeProfile"].as<int>());
+        activeProfile = static_cast<Profiles>(doc["ActiveProfile"].as<int>());
     }
 
-    if (doc.containsKey("brightness"))
+    if (doc.containsKey("Brightness"))
     {
-        brightness = doc["brightness"];
+        brightness = doc["Brightness"];
     }
 
-    if (doc.containsKey("color_red"))
+    if (doc.containsKey("ColorRed"))
     {
-        color_red = doc["color_red"];
+        color_red = doc["ColorRed"];
     }
 
-    if (doc.containsKey("color_green"))
+    if (doc.containsKey("ColorGreen"))
     {
-        color_green = doc["color_green"];
+        color_green = doc["ColorGreen"];
     }
 
-    if (doc.containsKey("color_blue"))
+    if (doc.containsKey("ColorBlue"))
     {
-        color_blue = doc["color_blue"];
+        color_blue = doc["ColorBlue"];
     }
 
-    if(doc.containsKey("ledCount"))
+    if(doc.containsKey("LedCount"))
     {
-        ledCount[0] = doc["ledCount"][0];
-        ledCount[1] = doc["ledCount"][1];
+        ledCount[0] = doc["LedCount"][0];
+        ledCount[1] = doc["LedCount"][1];
     }
 
-    if (doc.containsKey("backLeds"))
+    if (doc.containsKey("BackLeds"))
     {
-        backLeds = doc["backLeds"];
+        backLeds = doc["BackLeds"];
     }
 
-    if (doc.containsKey("centerLeds"))
+    if (doc.containsKey("CenterLeds"))
     {
-        centerLeds = doc["centerLeds"];
+        centerLeds = doc["CenterLeds"];
     }
 
-    if (doc.containsKey("frontLeds"))
+    if (doc.containsKey("FrontLeds"))
     {
-        frontLeds = doc["frontLeds"];
+        frontLeds = doc["FrontLeds"];
     }
 
-    if (doc.containsKey("updatesPerSecond"))
+    if (doc.containsKey("UpdatesPerSecond"))
     {
-        updatesPerSecond = doc["updatesPerSecond"];
+        updatesPerSecond = doc["UpdatesPerSecond"];
     }
 
     // Update the userColor based on the new RGB values
